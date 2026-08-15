@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { formatDuration, getProvenance } from './provenance.js';
 
 const READ_WPM = 220;
 const words = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
@@ -46,8 +47,68 @@ export function Topbar({ slug, slugs, minutes }) {
             </a>
           ))}
       </span>
-      <span>{minutes} min read</span>
+      <span className="topbar-right">
+        <ProvenanceStamp slug={slug} />
+        <span>{minutes} min read</span>
+      </span>
     </nav>
+  );
+}
+
+/**
+ * The document's watermark: real authoring activity, tracked in dev, stored
+ * beside the source, baked into the export. Proof the author showed up.
+ */
+function ProvenanceStamp({ slug }) {
+  const [stats, setStats] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    getProvenance(slug).then((data) => {
+      if (data?.readingMs) setStats(data);
+    });
+  }, [slug]);
+
+  if (!stats) return null;
+  const day = (iso) => new Date(iso).toLocaleDateString();
+  return (
+    <span className="prov-wrap">
+      <button
+        type="button"
+        className="prov-stamp"
+        aria-expanded={open}
+        title="Authoring provenance"
+        onClick={() => setOpen((v) => !v)}
+      >
+        ✍ {formatDuration(stats.readingMs)}
+      </button>
+      {open && (
+        <div className="prov-panel">
+          <p className="toc-eyebrow">Provenance</p>
+          <dl>
+            <dt>sessions</dt>
+            <dd>{stats.sessions ?? 0}</dd>
+            <dt>doc open</dt>
+            <dd>{formatDuration(stats.readingMs)}</dd>
+            <dt>actively editing</dt>
+            <dd>{formatDuration(stats.editingMs)}</dd>
+            <dt>edits landed</dt>
+            <dd>{stats.edits ?? 0}</dd>
+            {stats.firstSeen && (
+              <>
+                <dt>span</dt>
+                <dd>
+                  {day(stats.firstSeen)} → {day(stats.lastSeen)}
+                </dd>
+              </>
+            )}
+          </dl>
+          <p className="prov-note">
+            Measured from real authoring activity, stored beside the source.
+          </p>
+        </div>
+      )}
+    </span>
   );
 }
 

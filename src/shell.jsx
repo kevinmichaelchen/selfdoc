@@ -1,12 +1,30 @@
 import { useEffect, useState } from 'react';
-import { blockKey, loadComments, saveComments } from './comments.js';
+import {
+  blockKey,
+  isAnnotated,
+  loadAnnotations,
+  loadGrade,
+  saveAnnotations,
+  saveGrade,
+} from './comments.js';
 import { beginEdit, splice } from './editor-core.js';
+import { analyzeAll } from './heat.js';
 
-const OWN_UI = '.editor-shell, .block-toolbar, .comment-panel, .ring-wrap, .topbar';
+const OWN_UI =
+  '.editor-shell, .block-toolbar, .comment-panel, .heat-panel, .ring-wrap, .topbar';
+
+const REACTIONS = [
+  ['wtf', '😕 lost me'],
+  ['note', '📝 needs margin note'],
+  ['kudos', '👏 kudos'],
+];
+
+const GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D', 'F'];
 
 /**
- * The two interactive modes. Edit mode (dev only) rewrites the source file;
- * comment mode annotates blocks into localStorage and ships in the export.
+ * The interactive modes. Edit mode (dev only) rewrites the source file;
+ * comment mode annotates blocks into localStorage; heat mode is a derived
+ * writing-lint lens. Comment and heat ship in the export.
  */
 export function Shell({ slug }) {
   const canEdit = import.meta.env.DEV;
@@ -17,6 +35,8 @@ export function Shell({ slug }) {
   const [status, setStatus] = useState('');
   const [hover, setHover] = useState(null);
   const [commentEl, setCommentEl] = useState(null);
+  const [heatMap, setHeatMap] = useState(null);
+  const [grade, setGrade] = useState(() => loadGrade(slug));
   const [tick, setTick] = useState(0);
 
   const switchMode = (next) => {
@@ -30,7 +50,7 @@ export function Shell({ slug }) {
     sessionStorage.setItem('selfdoc-mode', mode ?? '');
     document.body.classList.toggle('editing', mode === 'edit');
     document.body.classList.toggle('commenting', mode === 'comment');
-    if (!mode) return;
+    if (mode !== 'edit' && mode !== 'comment') return;
     const onClick = (event) => {
       if (event.target.closest(OWN_UI)) return;
       if (event.target.closest('a')) event.preventDefault();
@@ -49,11 +69,11 @@ export function Shell({ slug }) {
     };
   }, [mode, slug]);
 
-  // The block toolbar follows the hovered block in edit mode.
+  // The block toolbar (edit) and signal panel (heat) follow the hovered block.
   useEffect(() => {
-    if (mode !== 'edit') return;
+    if (mode !== 'edit' && mode !== 'heat') return;
     const onOver = (event) => {
-      if (event.target.closest?.('.block-toolbar')) return;
+      if (event.target.closest?.('.block-toolbar, .heat-panel')) return;
       const el = event.target.closest?.('[data-edit-start], [data-node-start]');
       if (el) setHover(el);
     };
@@ -66,11 +86,31 @@ export function Shell({ slug }) {
     };
   }, [mode]);
 
-  // Marker dots on blocks that carry comments, visible in every mode.
+  // Heat is recomputed on toggle and leaves nothing behind on toggle-off.
   useEffect(() => {
-    const store = loadComments(slug);
+    if (mode !== 'heat') {
+      setHeatMap(null);
+      return;
+    }
+    const map = analyzeAll();
+    map.forEach((result, el) =>
+      el.classList.add(result.level === 2 ? 'heat-hot' : 'heat-warm'),
+    );
+    setHeatMap(map);
+    const warm = [...map.values()].filter((r) => r.level === 1).length;
+    setStatus(
+      map.size
+        ? `${map.size - warm} hot · ${warm} warm — hover a highlighted block`
+        : 'nothing runs hot',
+    );
+    return () => map.forEach((_, el) => el.classList.remove('heat-hot', 'heat-warm'));
+  }, [mode]);
+
+  // Marker dots on annotated blocks, visible in every mode.
+  useEffect(() => {
+    const store = loadAnnotations(slug);
     document.querySelectorAll('[data-edit-start]').forEach((el) => {
-      el.classList.toggle('has-comment', Boolean(store[blockKey(el)]?.length));
+      el.classList.toggle('has-comment', isAnnotated(store[blockKey(el)]));
     });
   }, [slug, mode, commentEl, tick]);
 
@@ -92,15 +132,16 @@ export function Shell({ slug }) {
     if (ok) location.reload();
   };
 
-  void tick; // reposition the toolbar on scroll
+  void tick; // reposition floating panels on scroll
   const rect =
-    mode === 'edit' && hover?.isConnected && !hover.isContentEditable
+    hover?.isConnected && (mode === 'edit' || mode === 'heat') && !hover.isContentEditable
       ? hover.getBoundingClientRect()
       : null;
+  const heat = mode === 'heat' && rect ? heatMap?.get(hover) : null;
 
   return (
     <>
-      {rect && (
+      {mode === 'edit' && rect && (
         <div
           className="block-toolbar"
           style={{ top: Math.max(8, rect.top - 34), left: Math.max(8, rect.right - 168) }}
@@ -116,6 +157,21 @@ export function Shell({ slug }) {
           </button>
         </div>
       )}
+      {heat && (
+        <div
+          className="heat-panel"
+          style={{
+            top: Math.min(window.innerHeight - 40 - heat.signals.length * 22, rect.bottom + 6),
+            left: Math.max(8, rect.left),
+          }}
+        >
+          <ul>
+            {heat.signals.map((signal) => (
+              <li key={signal}>{signal}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {commentEl && mode === 'comment' && (
         <CommentPanel
           slug={slug}
@@ -126,8 +182,30 @@ export function Shell({ slug }) {
       )}
       <div className="editor-shell">
         {status && <span className="editor-status">{status}</span>}
+        {mode === 'comment' && (
+          <label className="grade-pick">
+            grade
+            <select
+              value={grade}
+              onChange={(event) => {
+                setGrade(event.target.value);
+                saveGrade(slug, event.target.value);
+              }}
+            >
+              <option value="">—</option>
+              {GRADES.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button type="button" className="shell-btn" onClick={() => switchMode('heat')}>
+          {mode === 'heat' ? 'Done with heat' : '🌡 Heat'}
+        </button>
         <button type="button" className="shell-btn" onClick={() => switchMode('comment')}>
-          {mode === 'comment' ? 'Done commenting' : '💬 Comment'}
+          {mode === 'comment' ? 'Done commenting' : `💬 Comment${grade ? ` · ${grade}` : ''}`}
         </button>
         {canEdit && (
           <button type="button" className="shell-btn primary" onClick={() => switchMode('edit')}>
@@ -141,20 +219,19 @@ export function Shell({ slug }) {
 
 function CommentPanel({ slug, el, onClose, onChange }) {
   const key = blockKey(el);
-  const [items, setItems] = useState(() => loadComments(slug)[key] ?? []);
+  const [entry, setEntry] = useState(() => loadAnnotations(slug)[key] ?? { c: [], r: {} });
   const [draft, setDraft] = useState('');
 
   useEffect(() => {
-    setItems(loadComments(slug)[key] ?? []);
+    setEntry(loadAnnotations(slug)[key] ?? { c: [], r: {} });
     setDraft('');
   }, [slug, key]);
 
   const persist = (next) => {
-    const store = loadComments(slug);
-    if (next.length) store[key] = next;
-    else delete store[key];
-    saveComments(slug, store);
-    setItems(next);
+    const store = loadAnnotations(slug);
+    store[key] = next;
+    saveAnnotations(slug, store);
+    setEntry(next);
     onChange();
   };
 
@@ -166,14 +243,29 @@ function CommentPanel({ slug, el, onClose, onChange }) {
           ×
         </button>
       </div>
-      {items.length > 0 && (
+      <div className="reaction-row">
+        {REACTIONS.map(([key2, label]) => (
+          <button
+            key={key2}
+            type="button"
+            className={entry.r[key2] ? 'active' : ''}
+            onClick={() => persist({ ...entry, r: { ...entry.r, [key2]: !entry.r[key2] } })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {entry.c.length > 0 && (
         <ol className="comment-list">
-          {items.map((comment, i) => (
+          {entry.c.map((comment, i) => (
             <li key={comment.at + i}>
               <p>{comment.text}</p>
               <span className="comment-meta">
                 {new Date(comment.at).toLocaleString()}
-                <button type="button" onClick={() => persist(items.filter((_, j) => j !== i))}>
+                <button
+                  type="button"
+                  onClick={() => persist({ ...entry, c: entry.c.filter((_, j) => j !== i) })}
+                >
                   delete
                 </button>
               </span>
@@ -191,7 +283,10 @@ function CommentPanel({ slug, el, onClose, onChange }) {
         className="shell-btn primary"
         disabled={!draft.trim()}
         onClick={() => {
-          persist([...items, { text: draft.trim(), at: new Date().toISOString() }]);
+          persist({
+            ...entry,
+            c: [...entry.c, { text: draft.trim(), at: new Date().toISOString() }],
+          });
           setDraft('');
         }}
       >

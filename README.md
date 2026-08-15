@@ -18,11 +18,21 @@ pnpm install
 pnpm dev
 ```
 
-- **✏️ Edit** (bottom right) — click a block to rewrite it; hover a block for
-  the toolbar: **+ ¶** add paragraph, **+ note** add margin note, **✕** delete
-  (components too).
-- **💬 Comment** — click a block to annotate it. Comments are reader-state in
-  localStorage, shown as amber dots; they never touch the file.
+- **✏️ Edit** (bottom right, dev only) — click a block to rewrite it; hover a
+  block for the toolbar: **+ ¶** add paragraph, **+ note** add margin note,
+  **✕** delete (components too).
+- **💬 Comment** — click a block to annotate it: comments, one-tap reactions
+  (😕 lost me · 📝 needs margin note · 👏 kudos), and an overall grade for the
+  doc. Reader-state in localStorage, shown as amber dots; never touches the
+  file.
+- **🌡 Heat** — derived writing lint: long blocks, run-on sentences, dense
+  vocabulary, low Flesch scores, em-dash pileups, filler words. Hover a
+  highlighted block for its signals. Stored nowhere.
+- **✍ Provenance** (topbar stamp) — the document's watermark: authoring
+  sessions, time with the doc open, active editing time, and edits landed.
+  Tracked while the dev server runs, stored in `content/provenance/<doc>.json`
+  beside the source, baked into the export for readers. Proof the author
+  showed up.
 - **Progress ring** (bottom left) — reading progress; click it for a table of
   contents with per-section reading times. A `<Toc />` component renders the
   same thing inline.
@@ -30,7 +40,7 @@ pnpm dev
   Refs round-trip through inline edits; you can even type a new `[^ref]` into a
   paragraph and add its definition in the file.
 - **Multiple docs** — every `content/*.mdx` gets a topbar link
-  (`?doc=colophon`). Side-by-side: `?compare=doc,colophon`.
+  (`?doc=colophon`).
 
 ## Share it
 
@@ -38,8 +48,9 @@ pnpm dev
 pnpm export   # dist/index.html — one self-contained file
 ```
 
-The export inlines all docs, the reading chrome, and commenting into a single
-HTML file that works from `file://`. Editing is dev-only and excluded.
+The export inlines all docs, the reading chrome, commenting/reactions, heat,
+and provenance into a single HTML file that works from `file://`. Editing is
+dev-only and excluded.
 
 ## How it works
 
@@ -57,33 +68,44 @@ HTML file that works from `file://`. Editing is dev-only and excluded.
    can't break the MDX compile) and POSTs it with the block's range.
    Insertion is the same splice with `start == end`.
 3. **`vite.config.mjs`** — a dev-only middleware (`/__save`) splices the
-   replacement into the file at that range, allowlisted to `content/*.mdx`.
-   The page reloads with fresh offsets.
+   replacement into the file at that range, allowlisted to `content/*.mdx`,
+   and bumps the doc's provenance edit count server-side. A sibling endpoint
+   (`/__provenance`) receives time heartbeats from `src/provenance.js` and
+   merges them into the JSON sidecar; builds bake the sidecars in via
+   `define`.
 
-The reading chrome (`src/chrome.jsx`) is derived from the rendered DOM after
-mount — TOC, per-section durations, progress — so it's never stored and can't
-conflict with editing. Comments (`src/comments.js`) anchor to a hash of each
-block's text: stable across edits elsewhere, orphaned if the block itself is
-rewritten.
+The reading chrome (`src/chrome.jsx`) and heat signals (`src/heat.js`) are
+derived from the rendered DOM after mount — never stored, so they can't
+conflict with editing. Annotations (`src/comments.js`) anchor to a hash of
+each block's text: stable across edits elsewhere, orphaned if the block itself
+is rewritten.
 
 ## The boundary that makes it sane
 
 - **Prose** (paragraphs, headings, lists, quotes) → edit in the page.
 - **Structure** (components, their props, document order beyond
   add/delete-after) → edit in the MDX file, where structure belongs.
-- **Reader state** (comments) → localStorage, never the file.
+- **Reader state** (comments, reactions, grades) → localStorage, never the
+  file.
+- **Authorial provenance** → measured, not asserted; a JSON sidecar beside the
+  source.
 
 ## Known limits
 
 - Component props (a stat's `value`, a callout's `title`) aren't inline-editable
-  yet. The natural extension: an `<Editable prop="title">` wrapper that patches
-  the JSX attribute the same way.
+  yet (see ROADMAP).
 - Tables and the endnotes section render but are file-edited — their
   HTML→markdown conversion isn't trustworthy enough to write back.
 - Round-tripping normalizes formatting: source line-wrapping collapses to one
   line per paragraph on first edit; exotic pasted HTML becomes whatever
   turndown makes of it.
-- Comments on a block are orphaned if that block's text is rewritten.
+- Annotations on a block are orphaned if that block's text is rewritten.
+- Reactions and grades are single-reader until the feedback server exists
+  (see ROADMAP).
+
+See [ROADMAP.md](ROADMAP.md) for what's logged but deliberately not built:
+revision compare (draft vs canonical), reader feedback sync, and the
+read-only local-model assistant.
 
 ## Prior art
 

@@ -63,9 +63,21 @@ mounts. Nothing is stored, so none of it can ever disagree with the source
 file — or interfere with editing it.
 
 Comments are different: they're reader-state, not document-state. Hit **💬
-Comment**, click a block, and leave a note. Comments live in your browser's
-localStorage, so they work even in the exported single-file HTML, and blocks
-that carry comments show an amber dot in the margin.
+Comment**, click a block, and leave a note — or a one-tap reaction (😕 lost
+me, 📝 needs margin note, 👏 kudos) and an overall grade for the doc. All of
+it lives in your browser's localStorage, so it works even in the exported
+single-file HTML, and annotated blocks show an amber dot in the margin.
+
+**🌡 Heat** is a third lens: it flags blocks that read hot — too long, run-on
+sentences, dense vocabulary, em-dash pileups, filler words. Hover a
+highlighted block to see why. Like the TOC, it's derived on demand and stored
+nowhere.
+
+The ✍ stamp in the topbar is the document's watermark: how many sessions the
+author put in, how long the doc was open, how much of that was active editing,
+and how many edits actually landed. It's measured from real activity while
+authoring and stored beside the source in `content/provenance/` — so care, or
+the lack of it, leaves a paper trail that ships with the doc.
 
 <Note>
   Comments anchor to a hash of the block's text. Edit everything around a
