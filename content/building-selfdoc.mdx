@@ -1,0 +1,153 @@
+# Why we built a document that edits itself
+
+This post is the first real thing published with selfdoc, and it's about
+selfdoc. That's not laziness — it's the test. Every claim below is running
+live on the page you're reading: the table of contents was computed from this
+document a moment ago, the ✍ stamp in the topbar is recording that we wrote
+this ourselves, and if a sentence confuses you, you can select it and say so.
+
+<StatRow>
+  <Stat value="~1,300" label="lines of machinery" />
+  <Stat value="0" label="databases" />
+  <Stat value="3" label="lenses: edit, comment, heat" />
+</StatRow>
+
+<Toc />
+
+## The itch
+
+It started with a long internal write-up we were proud of: a hand-built HTML
+file with custom typography, margin notes, diagrams, a reading-progress bar.
+It read beautifully. And then someone wanted to fix a sentence.
+
+Fixing a sentence meant opening a 2,000-line HTML file, finding the paragraph
+inside the markup, and editing it without breaking anything around it. The
+document was lovely to read and hostile to touch. Markdown would fix the
+touching problem but throw away the design. MDX keeps the design — components
+in the prose, real markup when you need it — but you're still editing a source
+file in a code editor, holding the rendered page in your head.
+
+<Note>
+  MDX deserves the credit it usually doesn't get: the format was never the
+  problem. The missing piece was an editing experience that lives where the
+  reading happens.
+</Note>
+
+What we wanted sounded slightly unhinged when we first said it out loud: the
+rendered page should be the editor. Click a paragraph, fix the sentence, done.
+A program that edits itself.
+
+## The idea is old, actually
+
+It only sounds crazy until you remember TiddlyWiki[^tiddlywiki] — a wiki that
+ships as a single HTML file and saves edits by rewriting that same file. It
+has worked for twenty years. TinaCMS productized the same instinct for React
+sites. We didn't invent the idea; we shrank it until it fit in one small repo
+with no server, no database, and no accounts.
+
+> The best interface for editing a document is the document.
+
+## The trick that makes it work
+
+The whole thing rests on one fact: a markdown compiler already knows where
+every paragraph lives in the source file, down to the character. Normally that
+information is thrown away after rendering. We keep it.
+
+<Callout title="The loop">
+  A tiny plugin stamps each rendered block with its character range in the
+  source file. Click a block and it becomes editable in place. When you click
+  away, the edited HTML is converted back to markdown and spliced into the
+  file at exactly that range. The page reloads with fresh offsets. That's the
+  entire mechanism.
+</Callout>
+
+Everything else fell out of that loop almost for free. Adding a paragraph is
+the same splice with an empty range — "replace characters 500 through 500."
+Deleting a block is the splice with an empty replacement. The hover toolbar in
+edit mode is just those three splices with buttons on them.
+
+The boundary that keeps it sane: prose is edited in the page, structure is
+edited in the file. A callout's text is click-to-edit; the callout itself —
+its title, its existence — belongs to the source, where structure should live.
+
+## The file is the only state
+
+We kept one rule while adding features: nothing gets a second home. The
+`.mdx` file is the document; everything else is either derived from it or
+deliberately not part of it.
+
+The table of contents, the per-section reading times, the progress ring, and
+the 🌡 Heat lens are all computed from the rendered page after it mounts.
+They're never stored, so they can never disagree with the source. Heat is our
+writing lint — it flags blocks that run long, sentences that never end, dense
+vocabulary, filler words, and yes, em-dash pileups. Run it on this post; it
+catches us more than we'd like.
+
+<Note>
+  Reader feedback — comments, reactions, grades — lives in your browser, not
+  in the file. The author's document and the reader's marginalia are different
+  things, and mixing them would make both worse.
+</Note>
+
+Feedback works at whatever zoom level the confusion lives at: select a phrase
+and the annotation narrows to those exact words, click a heading to comment on
+a section, or grade the whole document. A phrase annotation anchors to the
+text itself, so it survives edits elsewhere and dies honestly when the phrase
+it judged is rewritten.
+
+## Proof of care
+
+The feature we argued about most. Any document can claim effort; we wanted one
+that could show it. The ✍ stamp in the topbar is a tally measured while
+authoring: sessions and distinct days, active time, editing time, edits that
+landed, words added and removed.
+
+Measured is the important word. An idle tab accrues nothing — time only counts
+when there's real input. Typed characters and pasted characters are counted
+separately, because the failure mode we care about is specific: generate a
+wall of prose somewhere else, paste it in, ship it. That workflow leaves a
+signature — one session, minutes of activity, a paste-heavy keystroke ratio —
+and the stamp makes the signature public. The tally lives in a JSON file
+beside the source, in version control, accruing across drafts.
+
+It's not surveillance; it's a receipt. Care leaves a paper trail. So does the
+lack of it.
+
+## What we said no to
+
+A side-by-side view for comparing two documents — cut, because nobody
+compares unrelated documents; the version worth building is draft-versus-
+canonical of the *same* document, and it's on the roadmap instead.
+
+AI features — gated, deliberately. There's an obvious temptation to bolt a
+model onto a tool like this. The roadmap holds a narrow version: a local,
+in-browser model that is read-only, dictionary-grade, and required to quote
+sentences that actually appear in the post, verified by string match. It
+doesn't get built until the foundation earns it.
+
+We also went looking at the new TanStack content libraries[^tanstack] before
+getting attached to our pipeline. The verdict was clarifying: their markdown
+parser is small and fast and completely unusable for us, because its syntax
+tree carries no source positions — and source positions are the one fact this
+entire design stands on. Nothing tells you what your architecture actually is
+like discovering which dependency you can't swap out.
+
+## Where this goes
+
+The honest limits, in one breath: component props aren't inline-editable yet,
+tables and endnotes round-trip too poorly to be page-editable, a rewritten
+block orphans its annotations, and feedback is single-reader until the little
+sync server exists. Each of those is a roadmap entry, not a mystery.
+
+But the core holds. One source file per post, readable in a pull request,
+editable by clicking on it, exportable as a single HTML file you can hand to
+anyone — including, via the ⧉ button, straight to their agent as markdown.
+The document is the editor, the receipt, and the artifact. That's the whole
+pitch.
+
+[^tiddlywiki]: TiddlyWiki calls itself "a non-linear personal web notebook";
+    the single-file quine design dates to 2004 and still works today.
+
+[^tanstack]: TanStack Markdown and TanStack Highlight, announced together in
+    2026. The highlighter is the part we'll likely adopt — synchronous, tiny,
+    and a clean fit for the round-trip once it stabilizes.

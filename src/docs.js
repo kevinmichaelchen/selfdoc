@@ -14,4 +14,6 @@ for (const [file, raw] of Object.entries(raws)) {
   sources[file.match(/([^/]+)\.mdx$/)[1]] = raw;
 }
 
-export const DEFAULT_DOC = docs.doc ? 'doc' : Object.keys(docs)[0];
+export const DEFAULT_DOC = docs['building-selfdoc']
+  ? 'building-selfdoc'
+  : (docs.doc ? 'doc' : Object.keys(docs)[0]);
