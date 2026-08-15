@@ -1,16 +1,18 @@
 # A document that edits itself
 
 This page is rendered from `content/doc.mdx`, but you never have to open that
-file. Click **Edit this page** in the corner, then click any paragraph, heading,
-or list — it becomes editable right here. When you click away, your edit is
+file. Click **✏️ Edit** in the corner, then click any paragraph, heading, or
+list — it becomes editable right here. When you click away, your edit is
 converted back to markdown and spliced into the source file at the exact
 character range this block came from.
 
 <StatRow>
-  <Stat value="1" label="source file" />
+  <Stat value="1" label="source file per doc" />
   <Stat value="0" label="databases" />
-  <Stat value="~300" label="lines of machinery" />
+  <Stat value="~700" label="lines of machinery" />
 </StatRow>
+
+<Toc />
 
 ## How the trick works
 
@@ -21,7 +23,16 @@ element as `data-edit-start` and `data-edit-end`.
 1. You click a block; it becomes `contentEditable`.
 2. On blur, the edited HTML is converted back to markdown.
 3. The dev server splices it into the file at the stamped range.
-4. Vite sees the file change and reloads with fresh offsets.
+4. The page reloads with fresh offsets.
+
+<Note>
+  Insertion is the same splice with an empty range: adding a paragraph at
+  offset 500 is just "replace characters 500–500".
+</Note>
+
+In edit mode, hovering a block also reveals a small toolbar: **+ ¶** inserts a
+new paragraph after it, **+ note** inserts a margin note, and **✕** deletes the
+block — components included.
 
 <Callout title="The important boundary">
   Prose is editable in the page. Structure — components like this callout, the
@@ -34,18 +45,47 @@ element as `data-edit-start` and `data-edit-end`.
 
 Inline formatting comes back intact: **bold**, *italics*,
 [links](https://mdxjs.com), and `inline code` all convert cleanly in both
-directions.
+directions.[^turndown] Citations survive too: this sentence carries a
+footnote,[^footnotes] and editing the paragraph won't corrupt it.
 
 <Note>
-  Code blocks are shown read-only style but are technically editable too.
   Anything you break, `git diff` will show you — the file is the only state
   there is.
 </Note>
 
 > The best interface for editing a document is the document.
 
+## The reading chrome
+
+The table of contents, the per-section reading times, and the progress ring in
+the bottom-left corner are all *derived* from the rendered document after it
+mounts. Nothing is stored, so none of it can ever disagree with the source
+file — or interfere with editing it.
+
+Comments are different: they're reader-state, not document-state. Hit **💬
+Comment**, click a block, and leave a note. Comments live in your browser's
+localStorage, so they work even in the exported single-file HTML, and blocks
+that carry comments show an amber dot in the margin.
+
+<Note>
+  Comments anchor to a hash of the block's text. Edit everything around a
+  block and its comments stay put; rewrite the block itself and they're
+  orphaned. That's the honest trade for keeping them out of the file.
+</Note>
+
 ## Why not just use a CMS
 
 Because the whole point is that there is nothing else: no database, no admin
 panel, no sync. The `.mdx` file stays reviewable in a PR, greppable, and
-versioned — and the rendered page is simply the nicest editor for it.
+versioned — and the rendered page is simply the nicest editor for it. When you
+want to share, `pnpm export` produces one self-contained HTML file with the
+reading chrome and comments included, editing excluded.
+
+[^turndown]: The HTML→markdown direction is handled by
+    [turndown](https://github.com/mixmark-io/turndown), with a custom rule so
+    citation references like this one round-trip as `[^id]` instead of
+    flattening into broken links.
+
+[^footnotes]: Citations are standard markdown footnotes (via remark-gfm),
+    rendered as endnotes down here. The endnotes section itself is file-edited
+    by design — HTML→markdown has no footnote syntax to round-trip through.

@@ -3,22 +3,22 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
-  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "export": "SINGLEFILE=1 vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "remark-gfm": "^4.0.1",
     "turndown": "^7.2.0"
   },
   "devDependencies": {
     "@mdx-js/rollup": "^3.1.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

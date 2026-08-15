@@ -1,0 +1,28 @@
+# Colophon
+
+A second document, mostly to prove the multi-doc story: every `.mdx` file in
+`content/` gets a link in the topbar, its own comments bucket, and a pane in
+the compare view (`?compare=doc,colophon`).
+
+<Note>
+  This doc also demos GFM tables. Tables render but aren't inline-editable —
+  HTML→markdown table conversion isn't trustworthy enough yet to let it write
+  to the file.
+</Note>
+
+## The pieces
+
+| Piece | Job |
+| --- | --- |
+| Vite + React | render, dev server, single-file export |
+| MDX + remark-gfm | prose, components, tables, footnotes |
+| rehype-source-pos | stamp each block's character range |
+| turndown | convert edited HTML back to markdown |
+| `/__save` middleware | splice edits into the source file |
+
+## Lineage
+
+TiddlyWiki proved a document can be its own editor twenty years ago.
+Tufte-style margin notes come from the print tradition. TinaCMS is the
+productized version of this whole idea — the off-ramp if selfdoc ever needs
+multi-user editing.
