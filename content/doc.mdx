@@ -1,0 +1,51 @@
+# A document that edits itself
+
+This page is rendered from `content/doc.mdx`, but you never have to open that
+file. Click **Edit this page** in the corner, then click any paragraph, heading,
+or list — it becomes editable right here. When you click away, your edit is
+converted back to markdown and spliced into the source file at the exact
+character range this block came from.
+
+<StatRow>
+  <Stat value="1" label="source file" />
+  <Stat value="0" label="databases" />
+  <Stat value="~300" label="lines of machinery" />
+</StatRow>
+
+## How the trick works
+
+The markdown compiler already knows where every block lives in the source file,
+down to the character. A tiny plugin stamps that range onto each rendered
+element as `data-edit-start` and `data-edit-end`.
+
+1. You click a block; it becomes `contentEditable`.
+2. On blur, the edited HTML is converted back to markdown.
+3. The dev server splices it into the file at the stamped range.
+4. Vite sees the file change and reloads with fresh offsets.
+
+<Callout title="The important boundary">
+  Prose is editable in the page. Structure — components like this callout, the
+  stat row above, their props — is edited in the MDX file, where structure
+  belongs. The text *inside* a callout is still prose, so this sentence is
+  click-to-edit too.
+</Callout>
+
+## What survives a round trip
+
+Inline formatting comes back intact: **bold**, *italics*,
+[links](https://mdxjs.com), and `inline code` all convert cleanly in both
+directions.
+
+<Note>
+  Code blocks are shown read-only style but are technically editable too.
+  Anything you break, `git diff` will show you — the file is the only state
+  there is.
+</Note>
+
+> The best interface for editing a document is the document.
+
+## Why not just use a CMS
+
+Because the whole point is that there is nothing else: no database, no admin
+panel, no sync. The `.mdx` file stays reviewable in a PR, greppable, and
+versioned — and the rendered page is simply the nicest editor for it.
