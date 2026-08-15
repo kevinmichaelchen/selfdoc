@@ -48,20 +48,40 @@ pnpm dev
 - **Citations** — standard markdown footnotes (`[^id]`), rendered as endnotes.
   Refs round-trip through inline edits; you can even type a new `[^ref]` into a
   paragraph and add its definition in the file.
+- **🎙 Read aloud** (dev only) — you're forced to hear your own prose: every
+  paragraph, list, quote, and margin note is a narration unit (code blocks and
+  headings are exempt) that you record yourself reading, one take at a time,
+  with a mandatory listen before saving. Recordings key on the section's
+  content hash — rewrite the prose and its audio is orphaned until you read
+  it again (an orphan purge button cleans up). Readers get a ▶ button beside
+  every narrated section. Audio lives in `content/audio/<doc>/`, beside the
+  source.
 - **Multiple docs** — every `content/*.mdx` gets a card on the home page
   (the bare URL); the topbar brand takes you back home.
 
 ## Share it
 
+The **⇩ export** dropdown in the topbar (dev only) builds and downloads the
+current doc: plain HTML by default, or HTML + narration — which refuses to
+build until every section is recorded. Same thing from the CLI:
+
 ```sh
-pnpm export                # dist/building-selfdoc.html (the default doc)
-DOC=colophon pnpm export   # dist/colophon.html
+pnpm export                        # dist/building-selfdoc.html (default doc, no audio)
+DOC=colophon pnpm export           # dist/colophon.html
+AUDIO=1 pnpm export                # narration inlined as data URLs (bigger file)
 ```
 
 Exports are per-document: one self-contained HTML file that works from
-`file://`, carrying only that doc — other drafts (and their provenance) stay
-out of the bundle. Reading chrome, commenting, heat, and the doc's provenance
-ship; editing is dev-only and excluded.
+`file://`, carrying only that doc — other drafts (and their provenance and
+audio) stay out of the bundle. Reading chrome, commenting, heat, provenance,
+and (opted-in) narration ship; editing is dev-only and excluded.
+
+## Deploy it
+
+Pushes to `main` deploy the full multi-doc site to GitHub Pages via
+`.github/workflows/deploy.yml` (assets are relative-pathed, so the project
+subpath just works; narration is served as static files under `audio/`).
+Committed provenance means every deploy carries current proof-of-care.
 
 ## How it works
 

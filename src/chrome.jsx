@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { audioKey, audioUnits, listRecorded } from './audio.js';
 import { sources } from './docs.js';
 import { formatDuration, getProvenance } from './provenance.js';
 
@@ -46,12 +47,71 @@ export function Topbar({ slug, minutes }) {
       </span>
       {slug && (
         <span className="topbar-right">
+          {import.meta.env.DEV && <ExportMenu slug={slug} />}
           <CopyMarkdown slug={slug} />
           <ProvenanceStamp slug={slug} />
           <span>{minutes} min read</span>
         </span>
       )}
     </nav>
+  );
+}
+
+/**
+ * Per-doc export, from the page. Plain HTML is the default; the narrated
+ * variant refuses to build until every section has been read aloud.
+ */
+function ExportMenu({ slug }) {
+  const [busy, setBusy] = useState(false);
+  const menuRef = useRef(null);
+
+  const run = async (audio) => {
+    menuRef.current?.removeAttribute('open');
+    if (audio) {
+      const units = new Set(audioUnits().map(audioKey));
+      const recorded = new Set(await listRecorded(slug));
+      const missing = [...units].filter((key) => !recorded.has(key)).length;
+      if (missing) {
+        window.alert(
+          `${missing} section${missing === 1 ? ' is' : 's are'} still unread. Record ${missing === 1 ? 'it' : 'them'} first (🎙 Read aloud).`,
+        );
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/__export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ doc: slug, audio }),
+      });
+      if (!res.ok) {
+        window.alert(`export failed: ${await res.text()}`);
+        return;
+      }
+      const url = URL.createObjectURL(await res.blob());
+      Object.assign(document.createElement('a'), {
+        href: url,
+        download: `${slug}${audio ? '.audio' : ''}.html`,
+      }).click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <details ref={menuRef} className="export-menu">
+      <summary className="prov-stamp">{busy ? 'building…' : '⇩ export'}</summary>
+      <div className="export-options">
+        <button type="button" onClick={() => run(false)}>
+          HTML <em>default</em>
+        </button>
+        <button type="button" onClick={() => run(true)}>
+          HTML + narration
+        </button>
+      </div>
+    </details>
   );
 }
 
