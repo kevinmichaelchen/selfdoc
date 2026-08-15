@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import {
   blockKey,
+  DOC_KEY,
   isAnnotated,
   loadAnnotations,
   loadGrade,
   saveAnnotations,
   saveGrade,
+  unwrapQuoteMarks,
+  wrapQuote,
 } from './comments.js';
 import { beginEdit, splice } from './editor-core.js';
 import { analyzeAll } from './heat.js';
@@ -59,7 +62,14 @@ export function Shell({ slug }) {
       if (mode === 'edit') {
         if (!el.isContentEditable) beginEdit(slug, el, setStatus);
       } else {
-        setCommentEl(el);
+        // A text selection narrows the annotation from the block to the
+        // selected phrase — confusion rarely spans a whole paragraph.
+        const selection = window.getSelection();
+        const quote =
+          selection && !selection.isCollapsed && el.contains(selection.anchorNode)
+            ? selection.toString().trim().slice(0, 240)
+            : null;
+        setCommentEl({ el, quote });
       }
     };
     document.addEventListener('click', onClick);
@@ -106,11 +116,17 @@ export function Shell({ slug }) {
     return () => map.forEach((_, el) => el.classList.remove('heat-hot', 'heat-warm'));
   }, [mode]);
 
-  // Marker dots on annotated blocks, visible in every mode.
+  // Marker dots on annotated blocks and highlights on quoted phrases,
+  // visible in every mode.
   useEffect(() => {
     const store = loadAnnotations(slug);
+    unwrapQuoteMarks();
     document.querySelectorAll('[data-edit-start]').forEach((el) => {
-      el.classList.toggle('has-comment', isAnnotated(store[blockKey(el)]));
+      const entry = store[blockKey(el)];
+      el.classList.toggle('has-comment', isAnnotated(entry));
+      entry?.c.forEach((comment) => {
+        if (comment.quote) wrapQuote(el, comment.quote);
+      });
     });
   }, [slug, mode, commentEl, tick]);
 
@@ -175,13 +191,22 @@ export function Shell({ slug }) {
       {commentEl && mode === 'comment' && (
         <CommentPanel
           slug={slug}
-          el={commentEl}
+          target={commentEl}
           onClose={() => setCommentEl(null)}
           onChange={() => setTick((t) => t + 1)}
         />
       )}
       <div className="editor-shell">
         {status && <span className="editor-status">{status}</span>}
+        {mode === 'comment' && (
+          <button
+            type="button"
+            className="shell-btn"
+            onClick={() => setCommentEl({ el: null, quote: null })}
+          >
+            🗎 whole doc
+          </button>
+        )}
         {mode === 'comment' && (
           <label className="grade-pick">
             grade
@@ -217,8 +242,9 @@ export function Shell({ slug }) {
   );
 }
 
-function CommentPanel({ slug, el, onClose, onChange }) {
-  const key = blockKey(el);
+function CommentPanel({ slug, target, onClose, onChange }) {
+  const { el, quote } = target;
+  const key = el ? blockKey(el) : DOC_KEY;
   const [entry, setEntry] = useState(() => loadAnnotations(slug)[key] ?? { c: [], r: {} });
   const [draft, setDraft] = useState('');
 
@@ -238,7 +264,13 @@ function CommentPanel({ slug, el, onClose, onChange }) {
   return (
     <div className="comment-panel">
       <div className="comment-head">
-        <span className="comment-excerpt">“{el.textContent.trim().slice(0, 70)}…”</span>
+        <span className="comment-excerpt">
+          {quote
+            ? `on the phrase “${quote.slice(0, 70)}${quote.length > 70 ? '…' : ''}”`
+            : el
+              ? `“${el.textContent.trim().slice(0, 70)}…”`
+              : 'on the whole document'}
+        </span>
         <button type="button" aria-label="Close" onClick={onClose}>
           ×
         </button>
@@ -259,6 +291,9 @@ function CommentPanel({ slug, el, onClose, onChange }) {
         <ol className="comment-list">
           {entry.c.map((comment, i) => (
             <li key={comment.at + i}>
+              {comment.quote && (
+                <span className="comment-quote">re: “{comment.quote.slice(0, 60)}”</span>
+              )}
               <p>{comment.text}</p>
               <span className="comment-meta">
                 {new Date(comment.at).toLocaleString()}
@@ -285,7 +320,10 @@ function CommentPanel({ slug, el, onClose, onChange }) {
         onClick={() => {
           persist({
             ...entry,
-            c: [...entry.c, { text: draft.trim(), at: new Date().toISOString() }],
+            c: [
+              ...entry.c,
+              { text: draft.trim(), at: new Date().toISOString(), ...(quote && { quote }) },
+            ],
           });
           setDraft('');
         }}

@@ -21,20 +21,33 @@ function readProvenance(doc) {
   }
 }
 
+const COUNTERS = [
+  'sessions',
+  'readingMs',
+  'editingMs',
+  'edits',
+  'typedChars',
+  'pastedChars',
+  'wordsAdded',
+  'wordsRemoved',
+];
+
 function bumpProvenance(doc, patch) {
   const prev = readProvenance(doc);
   const now = new Date().toISOString();
-  const merged = {
-    sessions: (prev.sessions ?? 0) + (patch.sessions ?? 0),
-    readingMs: (prev.readingMs ?? 0) + (patch.readingMs ?? 0),
-    editingMs: (prev.editingMs ?? 0) + (patch.editingMs ?? 0),
-    edits: (prev.edits ?? 0) + (patch.edits ?? 0),
-    firstSeen: prev.firstSeen ?? now,
-    lastSeen: now,
-  };
+  const today = now.slice(0, 10);
+  const merged = Object.fromEntries(
+    COUNTERS.map((key) => [key, (prev[key] ?? 0) + (patch[key] ?? 0)]),
+  );
+  merged.days = (prev.days ?? 0) + (prev.lastDay === today ? 0 : 1);
+  merged.lastDay = today;
+  merged.firstSeen = prev.firstSeen ?? now;
+  merged.lastSeen = now;
   fs.mkdirSync(PROV_DIR, { recursive: true });
   fs.writeFileSync(path.join(PROV_DIR, `${doc}.json`), `${JSON.stringify(merged, null, 2)}\n`);
 }
+
+const countWords = (text) => (text.trim().match(/\S+/g) ?? []).length;
 
 function allProvenance() {
   const map = {};
@@ -93,7 +106,15 @@ function selfSave() {
               return res.end('bad range');
             }
             fs.writeFileSync(docFile(doc), src.slice(0, start) + markdown + src.slice(end));
-            bumpProvenance(doc, { edits: 1 });
+            // Word deltas come from the splice that actually landed, not from
+            // anything the client claims.
+            const before = countWords(src.slice(start, end));
+            const after = countWords(markdown);
+            bumpProvenance(doc, {
+              edits: 1,
+              wordsAdded: Math.max(0, after - before),
+              wordsRemoved: Math.max(0, before - after),
+            });
             res.end('ok');
           } catch (err) {
             res.statusCode = 400;
@@ -118,7 +139,8 @@ function selfSave() {
         }
         readBody(req, (body) => {
           try {
-            const { doc, readingMs, editingMs, sessions } = JSON.parse(body);
+            const { doc, readingMs, editingMs, sessions, typedChars, pastedChars } =
+              JSON.parse(body);
             if (typeof doc !== 'string' || !SLUG.test(doc) || !fs.existsSync(docFile(doc))) {
               res.statusCode = 400;
               return res.end('bad doc');
@@ -129,6 +151,8 @@ function selfSave() {
               readingMs: reading,
               editingMs: clamp(editingMs, reading),
               sessions: sessions ? 1 : 0,
+              typedChars: clamp(typedChars, 200_000),
+              pastedChars: clamp(pastedChars, 1_000_000),
             });
             res.end('ok');
           } catch (err) {
@@ -141,15 +165,27 @@ function selfSave() {
   };
 }
 
+// @mdx-js/rollup strips queries when matching, so without this guard it would
+// also compile `doc.mdx?raw` imports — which must stay raw source strings for
+// the copy-as-markdown button.
+function mdxSkippingQueries() {
+  const plugin = mdx({ remarkPlugins: [remarkGfm], rehypePlugins: [rehypeSourcePos] });
+  return {
+    ...plugin,
+    enforce: 'pre',
+    transform(code, id) {
+      if (id.includes('?')) return null;
+      return plugin.transform.call(this, code, id);
+    },
+  };
+}
+
 export default defineConfig({
   // Snapshot at build time so the export ships the doc's provenance; the dev
   // client fetches fresh numbers from the middleware instead.
   define: { __PROVENANCE__: JSON.stringify(allProvenance()) },
   plugins: [
-    {
-      enforce: 'pre',
-      ...mdx({ remarkPlugins: [remarkGfm], rehypePlugins: [rehypeSourcePos] }),
-    },
+    mdxSkippingQueries(),
     react({ include: /\.(jsx|mdx)$/ }),
     selfSave(),
     // `pnpm export` inlines everything into dist/index.html for sharing.

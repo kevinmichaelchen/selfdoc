@@ -1,15 +1,29 @@
 /**
- * Authorial provenance: how much real time went into a document. Tracked only
- * in dev (the authoring environment) via heartbeats while the tab is visible,
- * split into open time vs active edit-mode time. Deltas flush to the dev
- * server, which merges them into content/provenance/<doc>.json — beside the
- * source, git-tracked. Edit counts are bumped server-side on each save, so the
- * client only ever reports time. The export bakes the stats in for readers.
+ * Authorial provenance: proof of care, measured. Tracked only in dev (the
+ * authoring environment):
+ *
+ * - Time heartbeats count ONLY when there was real input (keys, pointer,
+ *   scroll) in the last 30s — an idle tab accrues nothing.
+ * - Typed characters and pasted characters are counted separately, so the
+ *   record can show how much prose was written vs dumped in.
+ * - Words added/removed per edit are computed server-side from the actual
+ *   splice, and edit counts bump server-side on saves that landed — the
+ *   client only ever reports time and keystrokes.
+ *
+ * Everything merges additively into content/provenance/<doc>.json — beside
+ * the source, git-tracked, accruing across drafts, sessions, and days. The
+ * export bakes the stats in for readers.
  */
 const HEARTBEAT_MS = 5_000;
 const FLUSH_MS = 15_000;
+const IDLE_MS = 30_000;
 
 let started = false;
+let typedChars = 0;
+let pastedChars = 0;
+
+export const recordTyped = (n) => (typedChars += n);
+export const recordPasted = (n) => (pastedChars += n);
 
 export function startTracking(slug) {
   if (!import.meta.env.DEV || started) return;
@@ -21,18 +35,34 @@ export function startTracking(slug) {
   let sessions = sessionStorage.getItem('selfdoc-session') ? 0 : 1;
   sessionStorage.setItem('selfdoc-session', '1');
 
+  let lastActivity = Date.now();
+  const noteActivity = () => (lastActivity = Date.now());
+  for (const event of ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart']) {
+    window.addEventListener(event, noteActivity, { passive: true });
+  }
+
   setInterval(() => {
     if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastActivity > IDLE_MS) return;
     readingMs += HEARTBEAT_MS;
     if (document.body.classList.contains('editing')) editingMs += HEARTBEAT_MS;
   }, HEARTBEAT_MS);
 
   const flush = (useBeacon) => {
-    if (!readingMs && !sessions) return;
-    const payload = JSON.stringify({ doc: slug, readingMs, editingMs, sessions });
+    if (!readingMs && !sessions && !typedChars && !pastedChars) return;
+    const payload = JSON.stringify({
+      doc: slug,
+      readingMs,
+      editingMs,
+      sessions,
+      typedChars,
+      pastedChars,
+    });
     readingMs = 0;
     editingMs = 0;
     sessions = 0;
+    typedChars = 0;
+    pastedChars = 0;
     if (useBeacon) {
       navigator.sendBeacon('/__provenance', new Blob([payload], { type: 'application/json' }));
     } else {

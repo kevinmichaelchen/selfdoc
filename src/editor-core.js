@@ -1,4 +1,5 @@
 import TurndownService from 'turndown';
+import { recordPasted, recordTyped } from './provenance.js';
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -64,9 +65,22 @@ export function beginEdit(slug, el, setStatus) {
     }
   };
 
+  // Typed vs pasted is the provenance system's slop tell: keystrokes count
+  // per character, paste is measured separately from the clipboard payload.
+  const onInput = (event) => {
+    if (event.inputType === 'insertText' || event.inputType === 'insertCompositionText') {
+      recordTyped(event.data?.length ?? 1);
+    }
+  };
+  const onPaste = (event) => {
+    recordPasted(event.clipboardData?.getData('text/plain').length ?? 0);
+  };
+
   const onBlur = async () => {
     el.removeEventListener('keydown', onKey);
     el.removeEventListener('blur', onBlur);
+    el.removeEventListener('input', onInput);
+    el.removeEventListener('paste', onPaste);
     el.contentEditable = 'false';
     if (cancelled || el.innerHTML === original) {
       el.innerHTML = original;
@@ -89,6 +103,8 @@ export function beginEdit(slug, el, setStatus) {
   el.contentEditable = 'true';
   el.addEventListener('keydown', onKey);
   el.addEventListener('blur', onBlur);
+  el.addEventListener('input', onInput);
+  el.addEventListener('paste', onPaste);
   el.focus();
   setStatus('editing — click away or ⌘⏎ to save, esc to cancel');
 }

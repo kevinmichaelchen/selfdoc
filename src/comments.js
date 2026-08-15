@@ -45,6 +45,60 @@ export function saveAnnotations(slug, map) {
 
 export const loadGrade = (slug) => localStorage.getItem(gradeKey(slug)) ?? '';
 
+/** Pseudo-key for feedback on the document as a whole. */
+export const DOC_KEY = '__doc__';
+
+export function unwrapQuoteMarks() {
+  document.querySelectorAll('mark.annot').forEach((mark) => {
+    const parent = mark.parentNode;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    mark.remove();
+    parent.normalize();
+  });
+}
+
+/**
+ * Highlight a quoted phrase inside its block. Quotes anchor by text match, so
+ * they survive edits elsewhere and vanish (with their comments) when the
+ * quoted text is rewritten — the same rule as block annotations.
+ */
+export function wrapQuote(el, quote) {
+  const idx = el.textContent.indexOf(quote);
+  if (idx < 0) return;
+  const endIdx = idx + quote.length;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let pos = 0;
+  let startNode;
+  let startOffset = 0;
+  let endNode;
+  let endOffset = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const next = pos + node.data.length;
+    if (!startNode && next > idx) {
+      startNode = node;
+      startOffset = idx - pos;
+    }
+    if (next >= endIdx) {
+      endNode = node;
+      endOffset = endIdx - pos;
+      break;
+    }
+    pos = next;
+  }
+  if (!startNode || !endNode) return;
+  const range = document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  const mark = document.createElement('mark');
+  mark.className = 'annot';
+  try {
+    range.surroundContents(mark);
+  } catch {
+    // The quote crosses an inline-element boundary (e.g. spans a link);
+    // skip the highlight — the comment still lists the quote.
+  }
+}
+
 export function saveGrade(slug, grade) {
   if (grade) localStorage.setItem(gradeKey(slug), grade);
   else localStorage.removeItem(gradeKey(slug));

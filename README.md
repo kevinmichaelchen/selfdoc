@@ -21,18 +21,24 @@ pnpm dev
 - **✏️ Edit** (bottom right, dev only) — click a block to rewrite it; hover a
   block for the toolbar: **+ ¶** add paragraph, **+ note** add margin note,
   **✕** delete (components too).
-- **💬 Comment** — click a block to annotate it: comments, one-tap reactions
-  (😕 lost me · 📝 needs margin note · 👏 kudos), and an overall grade for the
-  doc. Reader-state in localStorage, shown as amber dots; never touches the
-  file.
+- **💬 Comment** — feedback at every zoom level: click a block to annotate it;
+  select a phrase first to annotate exactly those words (highlighted amber);
+  click a heading for section-level notes; the **whole doc** button for global
+  ones. Plus one-tap reactions (😕 lost me · 📝 needs margin note · 👏 kudos)
+  and an overall grade. Reader-state in localStorage; never touches the file.
 - **🌡 Heat** — derived writing lint: long blocks, run-on sentences, dense
   vocabulary, low Flesch scores, em-dash pileups, filler words. Hover a
   highlighted block for its signals. Stored nowhere.
-- **✍ Provenance** (topbar stamp) — the document's watermark: authoring
-  sessions, time with the doc open, active editing time, and edits landed.
-  Tracked while the dev server runs, stored in `content/provenance/<doc>.json`
-  beside the source, baked into the export for readers. Proof the author
-  showed up.
+- **✍ Provenance** (topbar stamp) — the document's watermark, measured not
+  asserted: sessions and distinct days, active time (heartbeats only count
+  with real input in the last 30s — idle tabs accrue nothing), edit-mode
+  time, edits landed, words added/removed (computed server-side from each
+  splice), and typed vs pasted characters (paste events are tallied
+  separately — bulk-pasting generated prose shows up as exactly that).
+  Accrues across drafts in `content/provenance/<doc>.json` beside the source,
+  baked into the export for readers.
+- **⧉ Copy md** (topbar) — one click copies the document's raw markdown
+  source, so readers can hand the whole post to their agents.
 - **Progress ring** (bottom left) — reading progress; click it for a table of
   contents with per-section reading times. A `<Toc />` component renders the
   same thing inline.

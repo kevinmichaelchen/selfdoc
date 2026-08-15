@@ -585,6 +585,20 @@ body.commenting [data-edit-start]:hover {
   font: 0.88rem/1.5 var(--sans);
 }
 
+.comment-quote {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--warning);
+  font: italic 0.74rem/1.4 var(--serif);
+}
+
+mark.annot {
+  background: rgba(182, 93, 37, 0.22);
+  color: inherit;
+  border-bottom: 2px solid var(--warning);
+  border-radius: 2px;
+}
+
 .comment-meta {
   display: flex;
   gap: 0.7rem;
@@ -762,4 +776,8 @@ body.commenting [data-edit-start]:hover {
   margin: 0.8rem 0 0;
   color: var(--muted);
   font: italic 0.72rem/1.45 var(--serif);
+}
+
+.prov-bad {
+  color: var(--warning);
 }

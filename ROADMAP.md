@@ -2,6 +2,36 @@
 
 Logged, not built.
 
+## Library watch (researched 2026-08-15)
+
+Findings from a review of the new TanStack content libraries:
+
+- **TanStack Markdown** — cannot replace our MDX pipeline: its AST carries no
+  source positions (verified in `src/types.ts`; block parsing is line-based),
+  and selfdoc's splice mechanism is built entirely on remark's character
+  offsets. No MDX/JSX either (components are HTML-comment markers with
+  string-only attributes), and no markdown serializer, so it doesn't help the
+  turndown side. Ideas worth keeping: full synchronous reparse per edit as a
+  legitimate architecture (validates our splice-and-recompile), and "the AST
+  is the product" — a serializable parse tree we could cache between
+  middleware and client.
+- **TanStack Highlight** — the best candidate for code-block syntax
+  highlighting when we want it: synchronous, no WASM/async init, ~4–6 kB gzip
+  with a few languages, stable `th-*` semantic classes recolored by CSS-var
+  themes. Wiring rule for our round-trip: highlight is a render-only overlay;
+  on edit, recover source from `textContent` (the spans are pure wrappers)
+  and emit the fence ourselves rather than trusting turndown with nested
+  spans. Alpha (v0.0.x) — adopt when it stabilizes.
+- **TanStack Charts** — pre-alpha, ~60 kB gzip whole-package against our
+  ~185 kB single-file export; provenance/heat visualizations are CSS-bars
+  simple for now. Revisit post-1.0 if we want brushable
+  provenance-over-time timelines.
+- **TanStack Hotkeys** — alpha but well-shaped (~11 kB); its tri-state rule is
+  worth stealing today in hand-rolled handlers: plain-letter shortcuts ignore
+  editable regions, Mod-chords and Escape fire everywhere. If we grow real
+  shortcut surface (mode toggles, command palette), adopt rather than
+  hand-roll further.
+
 ## Revision compare
 
 Compare a draft of a document against its canonical version — working tree vs

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { sources } from './docs.js';
 import { formatDuration, getProvenance } from './provenance.js';
 
 const READ_WPM = 220;
@@ -48,10 +49,30 @@ export function Topbar({ slug, slugs, minutes }) {
           ))}
       </span>
       <span className="topbar-right">
+        <CopyMarkdown slug={slug} />
         <ProvenanceStamp slug={slug} />
         <span>{minutes} min read</span>
       </span>
     </nav>
+  );
+}
+
+/** One click hands the whole source to a reader's agent. */
+function CopyMarkdown({ slug }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="prov-stamp"
+      title="Copy the document's markdown source"
+      onClick={async () => {
+        await navigator.clipboard.writeText(sources[slug]);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? '✓ copied' : '⧉ copy md'}
+    </button>
   );
 }
 
@@ -87,13 +108,21 @@ function ProvenanceStamp({ slug }) {
           <p className="toc-eyebrow">Provenance</p>
           <dl>
             <dt>sessions</dt>
-            <dd>{stats.sessions ?? 0}</dd>
-            <dt>doc open</dt>
+            <dd>
+              {stats.sessions ?? 0}
+              {stats.days > 1 ? ` over ${stats.days} days` : ''}
+            </dd>
+            <dt>active time</dt>
             <dd>{formatDuration(stats.readingMs)}</dd>
-            <dt>actively editing</dt>
+            <dt>editing</dt>
             <dd>{formatDuration(stats.editingMs)}</dd>
             <dt>edits landed</dt>
             <dd>{stats.edits ?? 0}</dd>
+            <dt>words</dt>
+            <dd>
+              +{stats.wordsAdded ?? 0} / −{stats.wordsRemoved ?? 0}
+            </dd>
+            <TypedVsPasted stats={stats} />
             {stats.firstSeen && (
               <>
                 <dt>span</dt>
@@ -104,11 +133,27 @@ function ProvenanceStamp({ slug }) {
             )}
           </dl>
           <p className="prov-note">
-            Measured from real authoring activity, stored beside the source.
+            Measured, not asserted: idle time doesn't count, and pasting is
+            tallied separately from typing.
           </p>
         </div>
       )}
     </span>
+  );
+}
+
+function TypedVsPasted({ stats }) {
+  const typed = stats.typedChars ?? 0;
+  const pasted = stats.pastedChars ?? 0;
+  if (!typed && !pasted) return null;
+  const pct = Math.round((typed / (typed + pasted)) * 100);
+  return (
+    <>
+      <dt>keystrokes</dt>
+      <dd className={pct < 50 ? 'prov-bad' : ''}>
+        {pct}% typed · {100 - pct}% pasted
+      </dd>
+    </>
   );
 }
 
