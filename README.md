@@ -2,7 +2,7 @@
 
 A document that edits itself.
 
-![Edit mode: click a paragraph and type](docs/edit-mode.png)
+![Edit mode: click a paragraph and type](docs/edit-mode.webp)
 
 Content lives in MDX files. The rendered page — typography, callouts, stat
 rows, margin notes, whatever components you add — doubles as the editor: toggle
