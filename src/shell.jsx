@@ -8,6 +8,7 @@ import {
   loadGrade,
   saveAnnotations,
   saveGrade,
+  unwrapMarks,
   unwrapQuoteMarks,
   wrapQuote,
 } from './comments.js';
@@ -130,6 +131,25 @@ export function Shell({ slug }) {
       });
     });
   }, [slug, mode, commentEl, tick]);
+
+  // Show what's being annotated while the panel is open: amber outline on the
+  // targeted block, a live highlight on a phrase target, the whole document
+  // outlined for global notes.
+  useEffect(() => {
+    if (mode !== 'comment' || !commentEl) return;
+    const el = commentEl.el;
+    if (!el) {
+      const main = document.querySelector('main');
+      main?.classList.add('comment-target-doc');
+      return () => main?.classList.remove('comment-target-doc');
+    }
+    el.classList.add('comment-target');
+    if (commentEl.quote) wrapQuote(el, commentEl.quote, 'annot-pending');
+    return () => {
+      el.classList.remove('comment-target');
+      unwrapMarks('mark.annot-pending');
+    };
+  }, [commentEl, mode]);
 
   const act = async (action) => {
     const el = hover;
@@ -362,6 +382,15 @@ function CommentPanel({ slug, target, onClose, onChange }) {
     onChange();
   };
 
+  const addComment = () => {
+    if (!draft.trim()) return;
+    persist({
+      ...entry,
+      c: [...entry.c, { text: draft.trim(), at: new Date().toISOString(), ...(quote && { quote }) }],
+    });
+    setDraft('');
+  };
+
   return (
     <div className="comment-panel">
       <div className="comment-head">
@@ -411,23 +440,20 @@ function CommentPanel({ slug, target, onClose, onChange }) {
       )}
       <textarea
         value={draft}
-        placeholder="Leave a comment on this block…"
+        placeholder={`Leave a comment… (${navigator.platform.includes('Mac') ? '⌘⏎' : 'Ctrl+⏎'} to submit)`}
         onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            addComment();
+          }
+        }}
       />
       <button
         type="button"
         className="shell-btn primary"
         disabled={!draft.trim()}
-        onClick={() => {
-          persist({
-            ...entry,
-            c: [
-              ...entry.c,
-              { text: draft.trim(), at: new Date().toISOString(), ...(quote && { quote }) },
-            ],
-          });
-          setDraft('');
-        }}
+        onClick={addComment}
       >
         Add comment
       </button>

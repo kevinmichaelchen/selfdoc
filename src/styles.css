@@ -763,6 +763,25 @@ mark.annot {
   border-radius: 2px;
 }
 
+/* The target being annotated right now, while the panel is open. */
+.comment-target {
+  box-shadow: 0 0 0 2px var(--warning);
+  background: rgba(182, 93, 37, 0.06);
+  border-radius: 2px;
+}
+
+mark.annot-pending {
+  background: rgba(182, 93, 37, 0.4);
+  color: inherit;
+  border-bottom: 2px solid var(--warning);
+  border-radius: 2px;
+}
+
+main.comment-target-doc {
+  outline: 2px dashed var(--warning);
+  outline-offset: 14px;
+}
+
 .comment-meta {
   display: flex;
   gap: 0.7rem;

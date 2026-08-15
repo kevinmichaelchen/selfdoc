@@ -81,8 +81,8 @@ export function exportAnnotations(slug) {
   };
 }
 
-export function unwrapQuoteMarks() {
-  document.querySelectorAll('mark.annot').forEach((mark) => {
+export function unwrapMarks(selector) {
+  document.querySelectorAll(selector).forEach((mark) => {
     const parent = mark.parentNode;
     while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
     mark.remove();
@@ -90,12 +90,16 @@ export function unwrapQuoteMarks() {
   });
 }
 
+// Saved-annotation highlights only; pending (composing) marks are managed by
+// the comment-target effect and must survive re-renders of the saved set.
+export const unwrapQuoteMarks = () => unwrapMarks('mark.annot');
+
 /**
  * Highlight a quoted phrase inside its block. Quotes anchor by text match, so
  * they survive edits elsewhere and vanish (with their comments) when the
  * quoted text is rewritten — the same rule as block annotations.
  */
-export function wrapQuote(el, quote) {
+export function wrapQuote(el, quote, className = 'annot') {
   const idx = el.textContent.indexOf(quote);
   if (idx < 0) return;
   const endIdx = idx + quote.length;
@@ -123,7 +127,7 @@ export function wrapQuote(el, quote) {
   range.setStart(startNode, startOffset);
   range.setEnd(endNode, endOffset);
   const mark = document.createElement('mark');
-  mark.className = 'annot';
+  mark.className = className;
   try {
     range.surroundContents(mark);
   } catch {
