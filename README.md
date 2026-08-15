@@ -25,7 +25,10 @@ pnpm dev
   select a phrase first to annotate exactly those words (highlighted amber);
   click a heading for section-level notes; the **whole doc** button for global
   ones. Plus one-tap reactions (😕 lost me · 📝 needs margin note · 👏 kudos)
-  and an overall grade. Reader-state in localStorage; never touches the file.
+  and an overall grade. A Google-Docs-style sidebar lists every annotation in
+  document order — click one to jump to it — and exports them all as JSON
+  (copy or download), each annotation paired with the text it targets, ready
+  to feed to an agent. Reader-state in localStorage; never touches the file.
 - **🌡 Heat** — derived writing lint: long blocks, run-on sentences, dense
   vocabulary, low Flesch scores, em-dash pileups, filler words. Hover a
   highlighted block for its signals. Stored nowhere.
@@ -45,18 +48,20 @@ pnpm dev
 - **Citations** — standard markdown footnotes (`[^id]`), rendered as endnotes.
   Refs round-trip through inline edits; you can even type a new `[^ref]` into a
   paragraph and add its definition in the file.
-- **Multiple docs** — every `content/*.mdx` gets a topbar link
-  (`?doc=colophon`).
+- **Multiple docs** — every `content/*.mdx` gets a card on the home page
+  (the bare URL); the topbar brand takes you back home.
 
 ## Share it
 
 ```sh
-pnpm export   # dist/index.html — one self-contained file
+pnpm export                # dist/building-selfdoc.html (the default doc)
+DOC=colophon pnpm export   # dist/colophon.html
 ```
 
-The export inlines all docs, the reading chrome, commenting/reactions, heat,
-and provenance into a single HTML file that works from `file://`. Editing is
-dev-only and excluded.
+Exports are per-document: one self-contained HTML file that works from
+`file://`, carrying only that doc — other drafts (and their provenance) stay
+out of the bundle. Reading chrome, commenting, heat, and the doc's provenance
+ship; editing is dev-only and excluded.
 
 ## How it works
 

@@ -165,6 +165,48 @@ function selfSave() {
   };
 }
 
+// Exports are per-document: `pnpm export` builds the default doc,
+// `DOC=colophon pnpm export` builds another. The single-doc module rewrite
+// below keeps every other draft out of the exported bundle entirely.
+function exportDocSlug() {
+  if (process.env.DOC) return process.env.DOC;
+  const slugs = fs
+    .readdirSync(CONTENT)
+    .filter((f) => f.endsWith('.mdx'))
+    .map((f) => f.replace(/\.mdx$/, ''));
+  if (slugs.includes('building-selfdoc')) return 'building-selfdoc';
+  return slugs.includes('doc') ? 'doc' : slugs[0];
+}
+const EXPORT_DOC = process.env.SINGLEFILE ? exportDocSlug() : null;
+if (EXPORT_DOC && !fs.existsSync(docFile(EXPORT_DOC))) {
+  throw new Error(`DOC=${EXPORT_DOC}: no content/${EXPORT_DOC}.mdx`);
+}
+
+function singleDocOnly() {
+  return {
+    name: 'selfdoc-single-doc',
+    enforce: 'pre',
+    transform(_code, id) {
+      if (!EXPORT_DOC || !id.endsWith('/src/docs.js')) return null;
+      return `
+import Doc from '../content/${EXPORT_DOC}.mdx';
+import raw from '../content/${EXPORT_DOC}.mdx?raw';
+export const docs = { '${EXPORT_DOC}': Doc };
+export const sources = { '${EXPORT_DOC}': raw };
+export const DEFAULT_DOC = '${EXPORT_DOC}';
+export function docMeta() {
+  return { title: '${EXPORT_DOC}', excerpt: '', minutes: 1 };
+}
+`;
+    },
+    closeBundle() {
+      if (!EXPORT_DOC) return;
+      const dist = path.resolve(import.meta.dirname, 'dist');
+      fs.renameSync(path.join(dist, 'index.html'), path.join(dist, `${EXPORT_DOC}.html`));
+    },
+  };
+}
+
 // @mdx-js/rollup strips queries when matching, so without this guard it would
 // also compile `doc.mdx?raw` imports — which must stay raw source strings for
 // the copy-as-markdown button.
@@ -181,10 +223,16 @@ function mdxSkippingQueries() {
 }
 
 export default defineConfig({
-  // Snapshot at build time so the export ships the doc's provenance; the dev
-  // client fetches fresh numbers from the middleware instead.
-  define: { __PROVENANCE__: JSON.stringify(allProvenance()) },
+  // Snapshot at build time so the export ships the doc's provenance (only its
+  // own — other docs' stats don't leak); the dev client fetches fresh numbers
+  // from the middleware instead.
+  define: {
+    __PROVENANCE__: JSON.stringify(
+      EXPORT_DOC ? { [EXPORT_DOC]: readProvenance(EXPORT_DOC) } : allProvenance(),
+    ),
+  },
   plugins: [
+    singleDocOnly(),
     mdxSkippingQueries(),
     react({ include: /\.(jsx|mdx)$/ }),
     selfSave(),

@@ -48,6 +48,39 @@ export const loadGrade = (slug) => localStorage.getItem(gradeKey(slug)) ?? '';
 /** Pseudo-key for feedback on the document as a whole. */
 export const DOC_KEY = '__doc__';
 
+/**
+ * All annotations for a doc as a machine-readable object — each one carries
+ * the text it targets, so an agent gets the context, not just the opinion.
+ */
+export function exportAnnotations(slug) {
+  const blocks = new Map();
+  document.querySelectorAll('[data-edit-start]').forEach((el) => {
+    blocks.set(blockKey(el), el);
+  });
+  const store = loadAnnotations(slug);
+  return {
+    doc: slug,
+    exportedAt: new Date().toISOString(),
+    grade: loadGrade(slug) || null,
+    annotations: Object.entries(store).map(([key, entry]) => ({
+      target:
+        key === DOC_KEY
+          ? { scope: 'document' }
+          : {
+              scope: 'block',
+              blockText: blocks.get(key)?.textContent.trim().slice(0, 300) ?? null,
+              orphaned: !blocks.has(key),
+            },
+      reactions: Object.keys(entry.r).filter((r) => entry.r[r]),
+      comments: entry.c.map((c) => ({
+        text: c.text,
+        at: c.at,
+        ...(c.quote && { quote: c.quote }),
+      })),
+    })),
+  };
+}
+
 export function unwrapQuoteMarks() {
   document.querySelectorAll('mark.annot').forEach((mark) => {
     const parent = mark.parentNode;

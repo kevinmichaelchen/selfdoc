@@ -36,23 +36,21 @@ export function useToc() {
   return state;
 }
 
-export function Topbar({ slug, slugs, minutes }) {
+export function Topbar({ slug, minutes }) {
   return (
     <nav className="topbar" aria-label="Document navigation">
       <span className="topbar-left">
-        <span className="topbar-brand">selfdoc</span>
-        {slugs.length > 1 &&
-          slugs.map((s) => (
-            <a key={s} href={`?doc=${s}`} aria-current={s === slug ? 'page' : undefined}>
-              {s}
-            </a>
-          ))}
+        <a className="topbar-brand" href="./">
+          selfdoc
+        </a>
       </span>
-      <span className="topbar-right">
-        <CopyMarkdown slug={slug} />
-        <ProvenanceStamp slug={slug} />
-        <span>{minutes} min read</span>
-      </span>
+      {slug && (
+        <span className="topbar-right">
+          <CopyMarkdown slug={slug} />
+          <ProvenanceStamp slug={slug} />
+          <span>{minutes} min read</span>
+        </span>
+      )}
     </nav>
   );
 }

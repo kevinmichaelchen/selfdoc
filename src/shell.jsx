@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   blockKey,
   DOC_KEY,
+  exportAnnotations,
   isAnnotated,
   loadAnnotations,
   loadGrade,
@@ -14,7 +15,7 @@ import { beginEdit, splice } from './editor-core.js';
 import { analyzeAll } from './heat.js';
 
 const OWN_UI =
-  '.editor-shell, .block-toolbar, .comment-panel, .heat-panel, .ring-wrap, .topbar';
+  '.editor-shell, .block-toolbar, .comment-panel, .comment-sidebar, .heat-panel, .ring-wrap, .topbar';
 
 const REACTIONS = [
   ['wtf', '😕 lost me'],
@@ -188,6 +189,16 @@ export function Shell({ slug }) {
           </ul>
         </div>
       )}
+      {mode === 'comment' && (
+        <CommentSidebar
+          slug={slug}
+          tick={tick}
+          onOpen={(target) => {
+            target.el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setCommentEl(target);
+          }}
+        />
+      )}
       {commentEl && mode === 'comment' && (
         <CommentPanel
           slug={slug}
@@ -239,6 +250,96 @@ export function Shell({ slug }) {
         )}
       </div>
     </>
+  );
+}
+
+const REACTION_EMOJI = { wtf: '😕', note: '📝', kudos: '👏' };
+
+function CommentSidebar({ slug, tick, onOpen }) {
+  void tick; // annotations changed; rebuild the list
+  const blocks = new Map();
+  document.querySelectorAll('[data-edit-start]').forEach((el) => {
+    blocks.set(blockKey(el), el);
+  });
+  const items = Object.entries(loadAnnotations(slug))
+    .map(([key, entry]) => {
+      const el = key === DOC_KEY ? null : (blocks.get(key) ?? null);
+      return {
+        key,
+        el,
+        entry,
+        order: key === DOC_KEY ? -1 : el ? Number(el.dataset.editStart) : Infinity,
+        excerpt:
+          key === DOC_KEY
+            ? 'Whole document'
+            : (el?.textContent.trim().slice(0, 70) ?? '(block was rewritten — orphaned)'),
+      };
+    })
+    .sort((a, b) => a.order - b.order);
+
+  const download = () => {
+    const data = JSON.stringify(exportAnnotations(slug), null, 2);
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    const link = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `${slug}-comments.json`,
+    });
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <aside className="comment-sidebar" aria-label="All comments">
+      <div className="sidebar-head">
+        <span className="toc-eyebrow">Comments</span>
+        <span className="sidebar-actions">
+          <button
+            type="button"
+            title="Copy all comments as JSON, for feeding to an agent"
+            onClick={() =>
+              navigator.clipboard.writeText(JSON.stringify(exportAnnotations(slug), null, 2))
+            }
+          >
+            ⧉ json
+          </button>
+          <button type="button" title="Download all comments as JSON" onClick={download}>
+            ⇩
+          </button>
+        </span>
+      </div>
+      {items.length === 0 && (
+        <p className="sidebar-empty">
+          Nothing yet. Click a block — or select a phrase first — to leave the
+          first comment.
+        </p>
+      )}
+      <ol>
+        {items.map((item) => (
+          <li key={item.key}>
+            <button
+              type="button"
+              className="sidebar-item"
+              disabled={!item.el && item.key !== DOC_KEY}
+              onClick={() => onOpen({ el: item.el, quote: null })}
+            >
+              <span className="sidebar-excerpt">
+                {Object.keys(item.entry.r)
+                  .filter((r) => item.entry.r[r])
+                  .map((r) => REACTION_EMOJI[r])
+                  .join(' ')}{' '}
+                “{item.excerpt}”
+              </span>
+              {item.entry.c.map((comment, i) => (
+                <span key={comment.at + i} className="sidebar-comment">
+                  {comment.quote && <em>re “{comment.quote.slice(0, 40)}”: </em>}
+                  {comment.text}
+                </span>
+              ))}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </aside>
   );
 }
 
