@@ -1,5 +1,7 @@
 # selfdoc
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kevinmichaelchen/selfdoc)
+
 **A document that edits itself.**
 
 Click a paragraph. Type. Click away. Your edit is converted back to markdown
