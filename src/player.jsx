@@ -22,10 +22,25 @@ const announceChange = () => window.dispatchEvent(new Event(AUDIO_CHANGED));
 // Voice, not music: mono, cleaned up, and 32 kbps opus — transparent for
 // speech at a quarter of MediaRecorder's default size, which matters because
 // narration travels inside single-file exports (base64, +33%).
-const MIC_CONSTRAINTS = {
+export const MIC_CONSTRAINTS = {
   audio: { channelCount: 1, noiseSuppression: true, echoCancellation: true },
 };
-const RECORDER_OPTIONS = { audioBitsPerSecond: 32_000 };
+export const RECORDER_OPTIONS = { audioBitsPerSecond: 32_000 };
+
+// "Write (and read) with the ear": a synthetic take counts as heard only
+// when the author lets it play to its natural end — the export gate keys on
+// this. Human takes were already heard once, in the recording ritual.
+function markHeard(slug, unit) {
+  if (!import.meta.env.DEV || !unit.meta?.tts || unit.meta.heard) return;
+  unit.meta.heard = true; // optimistic, so one listen fires one PUT
+  fetch(`/__audio/${slug}/${unit.key}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ heard: true }),
+  }).catch(() => {
+    unit.meta.heard = false;
+  });
+}
 
 /**
  * The narration rail: no mode, no button. Recorded sections carry a subtle
@@ -255,6 +270,7 @@ export function NarrationRail({ slug }) {
         if (playTokenRef.current !== token) return;
         const now = ctx.currentTime;
         if (now >= endAt) {
+          markHeard(slug, unit);
           clearSweep();
           sourcesRef.current = [];
           playSection(i + 1);
@@ -381,7 +397,7 @@ export function NarrationRail({ slug }) {
 }
 
 /** Live frequency bars driven by the microphone stream. */
-function Waveform({ stream }) {
+export function Waveform({ stream }) {
   const canvasRef = useRef(null);
   useEffect(() => {
     const ctx = new AudioContext();

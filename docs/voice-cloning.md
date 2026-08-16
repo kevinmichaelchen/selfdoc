@@ -79,6 +79,53 @@ Practical recipe, in order of impact:
    the Rainbow Passage once, cleanly. That's the "optimal sentences" answer
    in one sentence.
 
+## The calibration read
+
+selfdoc ships a purpose-made ~25-second passage (`CALIBRATION_TEXT` in
+`src/voice-ref.js`, recorded via "calibration read" in the Voice panel) that
+spends Pocket's 30-second prompt cap deliberately:
+
+> "When the sunlight strikes raindrops in the air, they act as a prism and
+> form a rainbow. Ask yourself a question: does this voice truly sound like
+> me? The quick brown fox jumps over the lazy dog — and, with pleasure,
+> measures each leap! Choose a gentle phrase, then shout the joyful ending.
+> Three thousand and thirty-three things, singing all the while."
+
+Design notes (62 words ≈ 23–27s at a natural pace):
+
+- **Phoneme coverage** — the rare English sounds most passages miss: /ʒ/
+  (plea*s*ure, mea*s*ures), /θ/ (three, thirty, things), /ð/ (the, this),
+  the affricates /dʒ/ (jumps, gentle, joyful) and /tʃ/ (choose, each), /ŋ/
+  (singing, ending), and all five diphthongs (r*ai*nbow, l*i*ke, s*ou*nd,
+  v*oi*ce, j*oy*ful).
+- **Prosodic variety** — a declarative, a genuine question (rising melody),
+  an exclamation, an imperative with a soft-to-loud dynamics contrast, and a
+  list-final falling cadence. A state-based clone captures how you move your
+  pitch, not just your timbre; one monotone paragraph clones a monotone.
+
+## What a clone actually captures (a 60-second linguistics primer)
+
+Speech has separable layers, and zero-shot cloning is much better at some
+than others:
+
+- **Timbre** (voice quality): the resonance signature of your vocal tract —
+  what makes your "ah" yours. Captured almost entirely; this is what a
+  10-second clone gets right.
+- **Prosody** — the musical layer, three strands:
+  - *melody/intonation*: pitch movement — statements fall, questions rise,
+    your habitual range and contours;
+  - *rhythm/tempo*: pacing, pause placement, how you stretch stressed
+    syllables;
+  - *stress*: which words you lean on.
+  Captured as a *style average* from the reference — hence the variety in
+  the calibration passage.
+- **Emotion/affect**: how your voice changes when amused, tired, emphatic.
+  Mostly *not* captured by a 30s state — the clone speaks in the mood of
+  the reference. This is the layer where "essentially perfect" would need
+  fine-tuning on much more audio.
+- **Articulation habits**: your specific consonant shapes, slight
+  regionalisms. Partially captured; improves with phoneme coverage.
+
 ## Sources
 
 - [Zhu, Zero-Shot Voice Cloning with Minimal Data (RUG thesis)](https://campus-fryslan.studenttheses.ub.rug.nl/708/1/MAs5965055QYZhu.pdf) — the 6–10s core / ~20s plateau finding

@@ -11,9 +11,21 @@ Python worker (`scripts/pocket_worker.py` via `uv run --with pocket-tts`,
 JSON lines over stdio) clones and synthesizes locally; results flow through
 the normal take pipeline, marked `Pocket TTS / cloned from your takes`.
 Cloning weights are HF-gated (accept terms + `uvx hf auth login`, one
-time). Research and recording guidance in docs/voice-cloning.md. Remaining:
-a purpose-made "calibration read" flow (Rainbow Passage) if assembled takes
-prove weaker than a single deliberate reference.
+time). Research and recording guidance in docs/voice-cloning.md. Also
+shipped same day: the ~25s calibration read (purpose-made passage, phoneme
+coverage + prosodic variety, see docs), Pocket as the default engine, and
+the hear-your-words export gate — no export until every section was read
+aloud by the author or synthesized and listened to end-to-end.
+
+## Pocket TTS in the browser
+
+Today the cloning worker runs outside the browser (Python via uv) — the
+only piece of selfdoc's authoring loop that does. Community ports are
+closing that gap: pocket-tts-onnx-export (ONNX Runtime Web), plus
+candle/WASM and jax-js implementations. Adopt one when a port supports
+voice cloning (deriving the state from a wav, not just running catalog
+voice states) and handles the HF-gated weights sanely. The 100M size is
+browser-plausible; whisper and Kokoro already run in-page here.
 
 ## Faster-than-realtime encode via WebCodecs
 

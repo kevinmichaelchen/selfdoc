@@ -9,7 +9,14 @@ import {
   TTS_VARIANTS,
   TTS_VOICES,
 } from './tts.js';
-import { buildReference, realTakes, referenceInfo } from './voice-ref.js';
+import { MIC_CONSTRAINTS, RECORDER_OPTIONS, Waveform } from './player.jsx';
+import {
+  buildReference,
+  CALIBRATION_TEXT,
+  realTakes,
+  referenceInfo,
+  saveCalibration,
+} from './voice-ref.js';
 
 const PROVIDERS = [
   {
@@ -53,9 +60,8 @@ const stored = (key, fallback = '') => localStorage.getItem(key) ?? fallback;
  */
 export function VoicePanel({ slug, onClose }) {
   const [probe, setProbe] = useState(null);
-  const [provider, setProvider] = useState(() => stored('selfdoc-tts-provider', 'kokoro'));
+  const [provider, setProvider] = useState(() => stored('selfdoc-tts-provider', 'pocket'));
   const [envKeys, setEnvKeys] = useState({});
-  const chosenRef = useRef(localStorage.getItem('selfdoc-tts-provider') != null);
   const [dtype, setDtype] = useState(null);
   const [voice, setVoice] = useState(() => stored('selfdoc-tts-voice', 'af_heart'));
   const [apiKey, setApiKey] = useState(() => stored(`selfdoc-tts-key-${stored('selfdoc-tts-provider', 'kokoro')}`));
@@ -63,6 +69,7 @@ export function VoicePanel({ slug, onClose }) {
   const [missing, setMissing] = useState(0);
   const [voiceRef, setVoiceRef] = useState(null);
   const [takeCount, setTakeCount] = useState(0);
+  const [calibrating, setCalibrating] = useState(false);
   const [status, setStatus] = useState('');
   const [pct, setPct] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -73,15 +80,11 @@ export function VoicePanel({ slug, onClose }) {
       setProbe(p);
       setDtype(p.recommended.dtype);
     });
-    // A key in the server environment makes its provider ready with zero
-    // setup. When the author never chose: their own cloned voice beats
-    // everything, then Fish (the default cloud pick), then Kokoro.
+    // The author's own cloned voice is the default engine — the whole point
+    // is hearing your words in something close to your voice.
     Promise.all([serverKeys(), referenceInfo()]).then(([keys, ref]) => {
       setEnvKeys(keys);
       setVoiceRef(ref);
-      if (chosenRef.current) return;
-      if (keys.pocket && ref.exists) setProvider('pocket');
-      else if (keys.fish) setProvider('fish');
     });
   }, []);
 
@@ -201,24 +204,36 @@ export function VoicePanel({ slug, onClose }) {
           )}
           {voiceRef?.exists ? (
             <p className="voice-probe">
-              voice reference: {voiceRef.seconds}s from {voiceRef.takes.length} of your real
-              takes ✓
+              voice reference: {voiceRef.seconds}s{' '}
+              {voiceRef.takes[0] === 'calibration'
+                ? 'from a calibration read'
+                : `from ${voiceRef.takes.length} of your real takes`}{' '}
+              ✓
             </p>
           ) : (
             <p className="voice-probe">
-              no voice reference yet — it gets built from your real recordings ({takeCount}{' '}
-              usable in this doc)
+              no voice reference yet — do the ~25s calibration read, or build one from your
+              recordings ({takeCount} usable in this doc)
             </p>
           )}
-          <button
-            type="button"
-            className="shell-btn"
-            disabled={busy || !takeCount}
-            onClick={rebuild}
-          >
-            <Mic size={12} />{' '}
-            {voiceRef?.exists ? 'rebuild reference from this doc' : 'build voice reference'}
-          </button>
+          <div className="record-row">
+            <button
+              type="button"
+              className="shell-btn"
+              disabled={busy}
+              onClick={() => setCalibrating(true)}
+            >
+              <Mic size={12} /> calibration read (~25s)
+            </button>
+            <button
+              type="button"
+              className="shell-btn"
+              disabled={busy || !takeCount}
+              onClick={rebuild}
+            >
+              build from takes
+            </button>
+          </div>
           <details className="voice-adv">
             <summary>first-time setup</summary>
             <p className="rec-hint">
@@ -379,6 +394,134 @@ export function VoicePanel({ slug, onClose }) {
         your reading. Re-recording a section with your own voice replaces its
         synthetic take.
       </p>
+      {calibrating && (
+        <CalibrationFlow
+          onClose={() => setCalibrating(false)}
+          onDone={async (seconds) => {
+            setCalibrating(false);
+            setVoiceRef(await referenceInfo());
+            setStatus(`calibration reference saved: ${Math.round(seconds)}s ✓`);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The calibration ritual, same shape as recording a section: countdown,
+ * live waveform while you read the passage, then a forced listen before
+ * keep-or-discard. One clean read becomes the whole cloning reference.
+ */
+function CalibrationFlow({ onClose, onDone }) {
+  const [phase, setPhase] = useState('countdown'); // countdown | live | review | saving
+  const [count, setCount] = useState(3);
+  const [stream, setStream] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [error, setError] = useState('');
+  const recorderRef = useRef(null);
+  const blobRef = useRef(null);
+
+  const killStream = () => {
+    recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
+    recorderRef.current = null;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia(MIC_CONSTRAINTS)
+      .then((s) => {
+        if (cancelled) return s.getTracks().forEach((t) => t.stop());
+        setStream(s);
+      })
+      .catch((err) => setError(`microphone unavailable — ${err.message}`));
+    return () => {
+      cancelled = true;
+      killStream();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'countdown' || !stream) return;
+    if (count === 0) {
+      const recorder = new MediaRecorder(stream, RECORDER_OPTIONS);
+      const chunks = [];
+      recorder.ondataavailable = (event) => chunks.push(event.data);
+      recorder.onstop = () => {
+        blobRef.current = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        setPreviewUrl(URL.createObjectURL(blobRef.current));
+        setPhase('review');
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setPhase('live');
+      return;
+    }
+    const tick = setTimeout(() => setCount((c) => c - 1), 800);
+    return () => clearTimeout(tick);
+  }, [phase, count, stream]);
+
+  const save = async () => {
+    setPhase('saving');
+    try {
+      const { seconds } = await saveCalibration(blobRef.current);
+      killStream();
+      onDone(seconds);
+    } catch (err) {
+      setError(String(err.message ?? err).slice(0, 110));
+      setPhase('review');
+    }
+  };
+
+  return (
+    <div className="rec-dock rec-overlay">
+      <p className="calib-text">“{CALIBRATION_TEXT}”</p>
+      {error && <p className="record-error">{error}</p>}
+      {!error && phase === 'countdown' && (
+        <div className="rec-row-wide">
+          <span className="rec-count">{stream ? count || '●' : '…'}</span>
+          <p className="rec-hint">read the passage above, naturally — don’t flatten it</p>
+        </div>
+      )}
+      {phase === 'live' && stream && (
+        <>
+          <Waveform stream={stream} />
+          <button
+            type="button"
+            className="shell-btn primary rec-live"
+            onClick={() => recorderRef.current?.stop()}
+          >
+            <Square size={12} /> done reading
+          </button>
+        </>
+      )}
+      {(phase === 'review' || phase === 'saving') && (
+        <>
+          <p className="rec-hint">your voice, once through the ear:</p>
+          <audio controls src={previewUrl} />
+          <div className="record-row">
+            <button
+              type="button"
+              className="shell-btn primary"
+              disabled={phase === 'saving'}
+              onClick={save}
+            >
+              {phase === 'saving' ? 'saving…' : 'use as my voice'}
+            </button>
+            <button
+              type="button"
+              className="shell-btn"
+              onClick={() => {
+                killStream();
+                onClose();
+              }}
+            >
+              discard
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -112,8 +112,9 @@ function AudioCoverage({ slug }) {
 }
 
 /**
- * Per-doc export, from the page. Plain HTML is the default; the narrated
- * variant refuses to build until every section has been read aloud.
+ * Per-doc export, from the page. No export until every section has passed
+ * through the author's ear: read aloud by them, or synthesized and listened
+ * to end-to-end. "Always write (and read) with the ear, not the eye."
  */
 function ExportMenu({ slug }) {
   const [busy, setBusy] = useState(false);
@@ -121,16 +122,24 @@ function ExportMenu({ slug }) {
 
   const run = async (audio) => {
     menuRef.current?.removeAttribute('open');
-    if (audio) {
-      const units = new Set(audioUnits().map(audioKey));
-      const recorded = new Set(Object.keys(await listAudio(slug)));
-      const missing = [...units].filter((key) => !recorded.has(key)).length;
-      if (missing) {
-        window.alert(
-          `${missing} section${missing === 1 ? ' is' : 's are'} still unread. Record ${missing === 1 ? 'it' : 'them'} first (🎙 Read aloud).`,
-        );
-        return;
-      }
+    const units = new Set(audioUnits().map(audioKey));
+    const recorded = await listAudio(slug);
+    const missing = [...units].filter((key) => !(key in recorded)).length;
+    const unheard = [...units].filter(
+      (key) => recorded[key]?.tts && !recorded[key].heard,
+    ).length;
+    if (missing || unheard) {
+      const problems = [
+        missing && `${missing} section${missing === 1 ? '' : 's'} with no voice at all`,
+        unheard &&
+          `${unheard} synthetic section${unheard === 1 ? '' : 's'} you haven't listened to`,
+      ]
+        .filter(Boolean)
+        .join(', and ');
+      window.alert(
+        `Not yet: ${problems}.\n\nRead them aloud (hover a section → 🎙), or render them in the Voice panel and then listen all the way through.\n\n“Always write (and read) with the ear, not the eye.” — C.S. Lewis`,
+      );
+      return;
     }
     setBusy(true);
     try {
