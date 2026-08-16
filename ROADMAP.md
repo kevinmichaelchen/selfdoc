@@ -58,9 +58,10 @@ Findings from a review of the new TanStack content libraries:
   provenance-over-time timelines.
 - **TanStack Hotkeys** — alpha but well-shaped (~11 kB); its tri-state rule is
   worth stealing today in hand-rolled handlers: plain-letter shortcuts ignore
-  editable regions, Mod-chords and Escape fire everywhere. If we grow real
-  shortcut surface (mode toggles, command palette), adopt rather than
-  hand-roll further.
+  editable regions, Mod-chords and Escape fire everywhere. Stolen as planned
+  (2026-08-16): `src/hotkeys.js` hand-rolls exactly that rule for p/c/e/v/?
+  and Escape-unwinding. Adopt the library if the surface grows into chords
+  or a command palette.
 
 ## Revision compare
 

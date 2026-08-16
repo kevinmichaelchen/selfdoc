@@ -179,8 +179,18 @@ async function kokoroSynthesize({ dtype, device, voice }, text, onProgress, canc
   return { pcm, sampleRate };
 }
 
+/** Which cloud providers have a key in the dev server's environment. */
+export async function serverKeys() {
+  try {
+    return await (await fetch('/__tts')).json();
+  } catch {
+    return {};
+  }
+}
+
 // Cloud providers go through the dev middleware (no CORS, and the request
-// shape stays in one place). Keys live in the author's localStorage only.
+// shape stays in one place). The middleware resolves keys from its
+// environment first; a key sent from the panel is a per-request override.
 async function cloudSynthesize(provider, apiKey, cloudVoice, text) {
   const res = await fetch('/__tts', {
     method: 'POST',

@@ -1331,3 +1331,44 @@ main.comment-target-doc {
   align-items: center;
   gap: 0.3rem;
 }
+
+.voice-adv {
+  margin: 0.55rem 0;
+}
+
+.voice-adv summary {
+  cursor: pointer;
+  color: var(--muted);
+  font: 500 0.72rem/1.4 var(--sans);
+}
+
+.voice-adv[open] summary {
+  margin-bottom: 0.4rem;
+}
+
+.hotkey-help dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.45rem 0.7rem;
+  margin: 0.3rem 0 0;
+  align-items: baseline;
+}
+
+.hotkey-help dd {
+  margin: 0;
+  color: var(--muted);
+  font: 400 0.78rem/1.4 var(--sans);
+}
+
+.hotkey-help kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--rule);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: 600 0.72rem/1.3 var(--sans);
+  text-align: center;
+}

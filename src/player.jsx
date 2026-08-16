@@ -10,6 +10,7 @@ import {
   listAudio,
   saveRecording,
   STOP_NARRATION,
+  TOGGLE_LISTEN,
   tokensOf,
   unwrapWords,
   wrapWords,
@@ -262,6 +263,17 @@ export function NarrationRail({ slug }) {
   };
 
   const narrated = units.filter((unit) => unit.recorded);
+
+  // The `p` hotkey: same behavior as the Listen pill.
+  useEffect(() => {
+    const onToggle = () => {
+      if (playing) stopPlayback();
+      else if (narrated.length) playFrom(narrated[0].key);
+    };
+    window.addEventListener(TOGGLE_LISTEN, onToggle);
+    return () => window.removeEventListener(TOGGLE_LISTEN, onToggle);
+  });
+
   // Total listen time: trimmed spans minus skipped dead air.
   const listenSeconds = narrated.reduce((sum, unit) => {
     const meta = unit.meta;

@@ -115,6 +115,8 @@ export { blockKey as audioKey };
 export const AUDIO_CHANGED = 'selfdoc:audio-changed';
 /** Fired before anything mutates a block's DOM (e.g. an edit begins). */
 export const STOP_NARRATION = 'selfdoc:stop-narration';
+/** Fired by the `p` hotkey: start listening from the top, or pause. */
+export const TOGGLE_LISTEN = 'selfdoc:toggle-listen';
 
 /**
  * Word-sweep support for the playback highlight. Words get wrapped in inert

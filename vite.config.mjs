@@ -14,6 +14,9 @@ const PROV_DIR = path.join(CONTENT, 'provenance');
 const AUDIO_DIR = path.join(CONTENT, 'audio');
 
 const SLUG = /^[a-z0-9_-]+$/i;
+// Cloud TTS keys, resolved from the environment so secrets stay out of the
+// browser entirely. secretspec.toml declares these for secret managers.
+const TTS_ENV_KEYS = { elevenlabs: 'ELEVENLABS_API_KEY', fish: 'FISH_API_KEY' };
 const AUDIO_KEY = /^[a-z0-9]+$/;
 const docFile = (doc) => path.join(CONTENT, `${doc}.mdx`);
 
@@ -398,17 +401,35 @@ function selfServe() {
         res.end();
       });
 
-      // Cloud TTS proxy: keys pass through per-request from the author's
-      // browser (stored only in their localStorage), never persisted here.
+      // Cloud TTS proxy. Keys resolve server-side first — from the process
+      // environment (works with plain `export`, secretspec, varlock, any
+      // secret manager that injects env vars) so the browser never holds a
+      // secret. A key typed into the Voice panel overrides per-request and
+      // is never persisted here. GET reports which providers have env keys
+      // (booleans only, never the values).
       server.middlewares.use('/__tts', (req, res) => {
+        if (req.method === 'GET') {
+          res.setHeader('content-type', 'application/json');
+          return res.end(
+            JSON.stringify(
+              Object.fromEntries(
+                Object.entries(TTS_ENV_KEYS).map(([p, envVar]) => [p, Boolean(process.env[envVar])]),
+              ),
+            ),
+          );
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end();
         }
         readBody(req, async (body) => {
           try {
-            const { provider, key, voice, text } = JSON.parse(body.toString('utf8'));
-            if (typeof key !== 'string' || !key || typeof text !== 'string' || text.length > 5000) {
+            const { provider, key: clientKey, voice, text } = JSON.parse(body.toString('utf8'));
+            const key =
+              (typeof clientKey === 'string' && clientKey) ||
+              process.env[TTS_ENV_KEYS[provider] ?? ''] ||
+              '';
+            if (!key || typeof text !== 'string' || text.length > 5000) {
               res.statusCode = 400;
               return res.end('bad request');
             }

@@ -4,6 +4,7 @@ import {
   Download,
   FileText,
   Flame,
+  Keyboard,
   MessageSquareText,
   Pencil,
   Pilcrow,
@@ -25,9 +26,11 @@ import {
   unwrapQuoteMarks,
   wrapQuote,
 } from './comments.js';
+import { TOGGLE_LISTEN } from './audio.js';
 import { beginEdit, splice } from './editor-core.js';
 import { flags } from './flags.js';
 import { analyzeAll } from './heat.js';
+import { onHotkeys } from './hotkeys.js';
 import { VoicePanel } from './voice.jsx';
 
 const OWN_UI =
@@ -61,6 +64,7 @@ export function Shell({ slug }) {
   const [heatMap, setHeatMap] = useState(null);
   const [grade, setGrade] = useState(() => loadGrade(slug));
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [tick, setTick] = useState(0);
 
   const switchMode = (next) => {
@@ -69,6 +73,29 @@ export function Shell({ slug }) {
     setHover(null);
     setMode((current) => (current === next ? null : next));
   };
+
+  // Single-letter hotkeys; Escape unwinds the topmost thing that's open.
+  // Escape inside a contentEditable block belongs to the editor (save+blur).
+  useEffect(
+    () =>
+      onHotkeys({
+        c: () => switchMode('comment'),
+        p: () => window.dispatchEvent(new Event(TOGGLE_LISTEN)),
+        '?': () => setHelpOpen((open) => !open),
+        ...(canEdit && {
+          e: () => switchMode('edit'),
+          v: () => setVoiceOpen((open) => !open),
+        }),
+        Escape: (event) => {
+          if (event.target.isContentEditable) return;
+          if (helpOpen) setHelpOpen(false);
+          else if (voiceOpen) setVoiceOpen(false);
+          else if (commentEl) setCommentEl(null);
+          else if (mode) switchMode(mode);
+        },
+      }),
+    [canEdit, helpOpen, voiceOpen, commentEl, mode],
+  );
 
   useEffect(() => {
     sessionStorage.setItem('selfdoc-mode', mode ?? '');
@@ -247,6 +274,46 @@ export function Shell({ slug }) {
         />
       )}
       {voiceOpen && canEdit && <VoicePanel slug={slug} onClose={() => setVoiceOpen(false)} />}
+      {helpOpen && (
+        <div className="comment-panel hotkey-help">
+          <div className="comment-head">
+            <span className="toc-eyebrow">Keyboard</span>
+            <button type="button" aria-label="Close" onClick={() => setHelpOpen(false)}>
+              <X size={16} />
+            </button>
+          </div>
+          <dl>
+            <dt>
+              <kbd>p</kbd>
+            </dt>
+            <dd>listen from the top / pause</dd>
+            <dt>
+              <kbd>c</kbd>
+            </dt>
+            <dd>comment mode</dd>
+            {canEdit && (
+              <>
+                <dt>
+                  <kbd>e</kbd>
+                </dt>
+                <dd>edit mode</dd>
+                <dt>
+                  <kbd>v</kbd>
+                </dt>
+                <dd>synthetic voice panel</dd>
+              </>
+            )}
+            <dt>
+              <kbd>⌘⏎</kbd>
+            </dt>
+            <dd>submit a comment</dd>
+            <dt>
+              <kbd>esc</kbd>
+            </dt>
+            <dd>close whatever is open, then exit the mode</dd>
+          </dl>
+        </div>
+      )}
       <div className="editor-shell">
         {status && <span className="editor-status">{status}</span>}
         {mode === 'comment' && (
@@ -277,6 +344,15 @@ export function Shell({ slug }) {
             </select>
           </label>
         )}
+        <button
+          type="button"
+          className="shell-btn"
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setHelpOpen((open) => !open)}
+        >
+          <Keyboard size={12} />
+        </button>
         {canEdit && (
           <button type="button" className="shell-btn" onClick={() => setVoiceOpen((v) => !v)}>
             <AudioLines size={12} /> Voice

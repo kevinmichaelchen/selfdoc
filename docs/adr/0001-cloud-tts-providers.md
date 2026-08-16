@@ -36,14 +36,17 @@ bills that way; ~1M chars ≈ 15–20 hours of speech.
 | **OpenAI gpt-4o-mini-tts** | Good, not arena-topping; instructable style | $0.60/M input tokens + $12/M audio tokens ≈ **$0.015/min** (~$12–15/M chars). Legacy tts-1 $15/M, tts-1-hd $30/M | no | Cheap, ubiquitous keys (many authors already have one). Strong add candidate for that reason alone. |
 | **Hume Octave 2** | #6 TTS Arena; best-in-class emotional delivery | Subscription + overage $0.05–0.15 per 1k chars → ~$50–150/M | yes | "Reads for meaning" — interesting for prose narration specifically. |
 | **MiniMax speech-2.6** (Turbo/HD) | #7–8 TTS Arena; 40+ languages | $60/M (Turbo), $100/M (HD) direct; cheaper via resellers (Replicate, Together) | yes | Expressive but priced above its ranking neighbors. |
+| **Gradium** | Unproven — TTS in public beta; seed funding extended to $100M with NVIDIA investing | Not yet published (docs.gradium.ai) | yes (instant + professional) | Full voice platform (TTS/STT/live translation/on-device). Watch: if the beta quality matches the funding, revisit. |
 | **Cartesia Sonic 3/3.5** | Fastest latency (~40ms); solid quality | Credit plans free→$299/mo, effective ~$5–37/M depending on tier; no public flat PAYG | yes (1.5 credits/char) | Latency advantage is irrelevant to batch narration. |
 | **Deepgram Aura-2** | Enterprise-clean, not expressive | $30/M ($0.027 on Growth) | no | Optimized for voice agents, not long-form prose. |
 | **Amazon Polly / Google Cloud / Azure** | Commodity tier — clearly below the above for prose | ~$15–16/M (neural), ~$30/M (generative/Chirp3-HD) — approximate, stable for years | limited | Cloud-console key setup violates the "paste a key in minutes" bar; skip unless an author asks. |
 
 ## Decision
 
-1. Keep **Fish Audio** as the value pick ($15/M, honest PAYG) and
-   **ElevenLabs** as the name-brand pick.
+1. **Fish Audio is the default cloud pick** (decided 2026-08-16): honest
+   $15/M PAYG, strong arena standing, simplest onboarding. The Voice panel
+   labels it recommended and auto-selects it when a `FISH_API_KEY` is in the
+   server environment. **ElevenLabs** stays as the name-brand alternative.
 2. Next additions, in order of appeal:
    - **OpenAI gpt-4o-mini-tts** — not the best voice, but the key many
      authors already have, at commodity price. Lowest-friction win.

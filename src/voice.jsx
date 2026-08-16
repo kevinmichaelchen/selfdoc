@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AUDIO_CHANGED, audioKey, audioUnits, listAudio } from './audio.js';
 import {
   probeDevice,
+  serverKeys,
   synthesizeMissing,
   TTS_MODEL,
   TTS_VARIANTS,
@@ -16,23 +17,23 @@ const PROVIDERS = [
     facts: null, // rendered from TTS_MODEL
   },
   {
-    id: 'elevenlabs',
-    label: 'ElevenLabs — cloud API',
+    id: 'fish',
+    label: 'Fish Audio S1 — cloud, recommended',
     facts: {
-      quality: 'top tier on TTS Arena (closed model)',
-      cost: 'paid API — usage billed to your key',
-      privacy: 'text is sent to ElevenLabs; key stays in this browser',
-      voiceHint: 'voice id (blank = Rachel)',
+      quality: 'top open-family vendor on Artificial Analysis arena',
+      cost: '$15 per 1M characters, pay-as-you-go',
+      privacy: 'text is sent to Fish Audio',
+      voiceHint: 'reference/voice id (blank = default)',
     },
   },
   {
-    id: 'fish',
-    label: 'Fish Audio S1 — cloud API',
+    id: 'elevenlabs',
+    label: 'ElevenLabs — cloud',
     facts: {
-      quality: 'top open-family vendor on Artificial Analysis arena',
-      cost: 'paid API — usage billed to your key',
-      privacy: 'text is sent to Fish Audio; key stays in this browser',
-      voiceHint: 'reference/voice id (blank = default)',
+      quality: 'top tier on TTS Arena (closed model)',
+      cost: 'subscription credits — billed to your account',
+      privacy: 'text is sent to ElevenLabs',
+      voiceHint: 'voice id (blank = Rachel)',
     },
   },
 ];
@@ -47,6 +48,8 @@ const stored = (key, fallback = '') => localStorage.getItem(key) ?? fallback;
 export function VoicePanel({ slug, onClose }) {
   const [probe, setProbe] = useState(null);
   const [provider, setProvider] = useState(() => stored('selfdoc-tts-provider', 'kokoro'));
+  const [envKeys, setEnvKeys] = useState({});
+  const chosenRef = useRef(localStorage.getItem('selfdoc-tts-provider') != null);
   const [dtype, setDtype] = useState(null);
   const [voice, setVoice] = useState(() => stored('selfdoc-tts-voice', 'af_heart'));
   const [apiKey, setApiKey] = useState(() => stored(`selfdoc-tts-key-${stored('selfdoc-tts-provider', 'kokoro')}`));
@@ -61,6 +64,12 @@ export function VoicePanel({ slug, onClose }) {
     probeDevice().then((p) => {
       setProbe(p);
       setDtype(p.recommended.dtype);
+    });
+    // A key in the server environment makes its provider ready to use with
+    // zero setup — and Fish is the default pick when the author never chose.
+    serverKeys().then((keys) => {
+      setEnvKeys(keys);
+      if (!chosenRef.current && keys.fish) setProvider('fish');
     });
   }, []);
 
@@ -145,31 +154,6 @@ export function VoicePanel({ slug, onClose }) {
               </strong>
             </p>
           )}
-          <dl className="voice-facts">
-            <dt>model</dt>
-            <dd>
-              <a href={TTS_MODEL.hf} target="_blank" rel="noreferrer">
-                {TTS_MODEL.name}
-              </a>{' '}
-              · {TTS_MODEL.params}
-            </dd>
-            <dt>engine</dt>
-            <dd>{TTS_MODEL.type}</dd>
-            <dt>license</dt>
-            <dd>{TTS_MODEL.license}</dd>
-            <dt>languages</dt>
-            <dd>{TTS_MODEL.languages}</dd>
-          </dl>
-          <label className="voice-row">
-            variant
-            <select value={dtype ?? ''} onChange={(e) => setDtype(e.target.value)}>
-              {TTS_VARIANTS.map((v) => (
-                <option key={v.dtype} value={v.dtype}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="voice-row">
             voice
             <select
@@ -186,6 +170,34 @@ export function VoicePanel({ slug, onClose }) {
               ))}
             </select>
           </label>
+          <details className="voice-adv">
+            <summary>
+              model details — {TTS_MODEL.params} · {TTS_MODEL.license}
+            </summary>
+            <dl className="voice-facts">
+              <dt>model</dt>
+              <dd>
+                <a href={TTS_MODEL.hf} target="_blank" rel="noreferrer">
+                  {TTS_MODEL.name}
+                </a>{' '}
+                · {TTS_MODEL.params}
+              </dd>
+              <dt>engine</dt>
+              <dd>{TTS_MODEL.type}</dd>
+              <dt>languages</dt>
+              <dd>{TTS_MODEL.languages}</dd>
+            </dl>
+            <label className="voice-row">
+              variant
+              <select value={dtype ?? ''} onChange={(e) => setDtype(e.target.value)}>
+                {TTS_VARIANTS.map((v) => (
+                  <option key={v.dtype} value={v.dtype}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </details>
         </>
       )}
 
@@ -199,26 +211,35 @@ export function VoicePanel({ slug, onClose }) {
             <dt>privacy</dt>
             <dd>{meta.facts.privacy}</dd>
           </dl>
-          <input
-            className="voice-key"
-            type="password"
-            placeholder="API key"
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value);
-              localStorage.setItem(`selfdoc-tts-key-${provider}`, e.target.value);
-            }}
-          />
-          <input
-            className="voice-key"
-            type="text"
-            placeholder={meta.facts.voiceHint}
-            value={cloudVoice}
-            onChange={(e) => {
-              setCloudVoice(e.target.value);
-              localStorage.setItem('selfdoc-tts-cloud-voice', e.target.value);
-            }}
-          />
+          {envKeys[provider] ? (
+            <p className="voice-probe">
+              API key: from the server environment ✓ — the browser never holds it
+            </p>
+          ) : (
+            <input
+              className="voice-key"
+              type="password"
+              placeholder="API key (better: set it in the server env — see docs/adr/0002)"
+              value={apiKey}
+              onChange={(e) => {
+                setApiKey(e.target.value);
+                localStorage.setItem(`selfdoc-tts-key-${provider}`, e.target.value);
+              }}
+            />
+          )}
+          <details className="voice-adv">
+            <summary>voice override</summary>
+            <input
+              className="voice-key"
+              type="text"
+              placeholder={meta.facts.voiceHint}
+              value={cloudVoice}
+              onChange={(e) => {
+                setCloudVoice(e.target.value);
+                localStorage.setItem('selfdoc-tts-cloud-voice', e.target.value);
+              }}
+            />
+          </details>
         </>
       )}
 
@@ -244,7 +265,7 @@ export function VoicePanel({ slug, onClose }) {
         <button
           type="button"
           className="shell-btn primary"
-          disabled={!probe || !missing || (needsKey && !apiKey.trim())}
+          disabled={!probe || !missing || (needsKey && !apiKey.trim() && !envKeys[provider])}
           onClick={render}
         >
           <AudioLines size={12} />{' '}
