@@ -1,14 +1,14 @@
 {
-  "sessions": 1,
-  "readingMs": 0,
+  "sessions": 3,
+  "readingMs": 40000,
   "editingMs": 0,
   "edits": 0,
   "typedChars": 0,
   "pastedChars": 0,
   "wordsAdded": 0,
   "wordsRemoved": 0,
-  "days": 1,
-  "lastDay": "2026-08-15",
+  "days": 2,
+  "lastDay": "2026-08-16",
   "firstSeen": "2026-08-15T16:41:40.095Z",
-  "lastSeen": "2026-08-15T16:41:40.095Z"
+  "lastSeen": "2026-08-16T01:29:30.920Z"
 }

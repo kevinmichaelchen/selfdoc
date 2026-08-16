@@ -84,8 +84,11 @@ section that hasn't been read aloud and a small mic appears in the margin;
 there is no better way to discover a sentence doesn't work than saying it
 with your own mouth. Once recorded, the section carries a subtle ▶ that plays
 from there through the rest of the narrated document, with the current word
-carrying a soft yellow underline as the audio plays (an estimate — the timing
-spreads the recording across the words by length). Recordings anchor to the
+carrying a soft yellow underline as the audio plays. The timing comes from a
+small speech model that listens to each take on the author's machine and pins
+every word to its moment (falling back to a length-based estimate when it
+isn't sure); it also finds long pauses and stray fillers and quietly skips
+them at playback. Recordings anchor to the
 section's content: rewrite the prose and its audio goes stale until you read
 the new version — but revert the prose and the old recording comes back. The
 narrated export refuses to build until the whole document has been read.

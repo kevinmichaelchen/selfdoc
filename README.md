@@ -57,7 +57,12 @@ pnpm dev
   waveform of your voice, then an explicit keep/again/discard decision — you
   hear the take before it exists. Leading and trailing silence is measured on
   save and stored as trim bounds beside the file, honored by playback and the
-  word sweep, with the take itself kept lossless. Recorded
+  word sweep, with the take itself kept lossless. After saving, a small speech
+  model (whisper-tiny via Transformers.js — author's machine only, dev-only,
+  one-time ~45 MB download) aligns per-word timestamps onto the prose and
+  turns long pauses and caught fillers into skip ranges; playback highlights
+  the actual word being spoken and jumps the dead air. Readers and exports
+  consume plain timestamps — no model ever ships. Recorded
   sections carry a subtle ▶ that plays *from there onward* through every
   narrated section, with an estimated word-follow highlight (audio time
   spread across words by character count). Recordings key on the section's

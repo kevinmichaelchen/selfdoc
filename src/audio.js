@@ -65,26 +65,39 @@ export async function findSpeechBounds(blob) {
     const sampleRate = buffer.sampleRate;
     const WINDOW = 1024;
     const THRESHOLD = 0.015;
+    const MIN_GAP_S = 0.9;
     let firstSample = -1;
     let lastSample = -1;
+    let gapStart = -1;
+    const gaps = [];
+    const round = (n) => Math.round(n * 100) / 100;
     for (let i = 0; i < data.length; i += WINDOW) {
       const end = Math.min(i + WINDOW, data.length);
       let sum = 0;
       for (let j = i; j < end; j++) sum += data[j] * data[j];
-      if (Math.sqrt(sum / (end - i)) > THRESHOLD) {
+      const loud = Math.sqrt(sum / (end - i)) > THRESHOLD;
+      if (loud) {
         if (firstSample < 0) firstSample = i;
+        // Close out an interior silent run: long pauses become skip ranges,
+        // compressed to a natural beat rather than removed entirely.
+        if (gapStart >= 0 && (i - gapStart) / sampleRate > MIN_GAP_S) {
+          gaps.push([round(gapStart / sampleRate + 0.3), round(i / sampleRate - 0.1)]);
+        }
+        gapStart = -1;
         lastSample = end;
+      } else if (lastSample > 0 && gapStart < 0) {
+        gapStart = i;
       }
     }
-    const round = (n) => Math.round(n * 100) / 100;
     if (firstSample < 0) {
-      return { t0: 0, t1: round(buffer.duration), duration: buffer.duration, silent: true };
+      return { t0: 0, t1: round(buffer.duration), duration: buffer.duration, silent: true, gaps: [] };
     }
     return {
       t0: round(Math.max(0, firstSample / sampleRate - 0.08)),
       t1: round(Math.min(buffer.duration, lastSample / sampleRate + 0.15)),
       duration: buffer.duration,
       silent: false,
+      gaps: gaps.filter(([s, e]) => e > s),
     };
   } finally {
     ctx.close();
@@ -110,14 +123,34 @@ export const STOP_NARRATION = 'selfdoc:stop-narration';
  * HTML→markdown round-trip, which is why STOP_NARRATION is dispatched
  * (synchronously) before an edit captures a block's innerHTML.
  */
-export function wrapWords(el) {
-  const textNodes = [];
+const textNodesOf = (el) => {
+  const nodes = [];
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    textNodes.push(node);
+    nodes.push(node);
   }
+  return nodes;
+};
+
+/**
+ * The section's word tokens, in exactly the order wrapWords will create
+ * spans — alignment timestamps are stored per token, so the two tokenizers
+ * must never drift apart.
+ */
+export function tokensOf(el) {
+  const tokens = [];
+  textNodesOf(el).forEach((node) => {
+    if (!node.data.trim()) return;
+    node.data.split(/(\s+)/).forEach((part) => {
+      if (part.trim()) tokens.push(part);
+    });
+  });
+  return tokens;
+}
+
+export function wrapWords(el) {
   const spans = [];
-  textNodes.forEach((node) => {
+  textNodesOf(el).forEach((node) => {
     if (!node.data.trim()) return;
     const fragment = document.createDocumentFragment();
     node.data.split(/(\s+)/).forEach((part) => {

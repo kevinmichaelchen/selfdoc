@@ -10,9 +10,11 @@ import {
   listAudio,
   saveRecording,
   STOP_NARRATION,
+  tokensOf,
   unwrapWords,
   wrapWords,
 } from './audio.js';
+import { ALIGN_STATUS, alignTake } from './audio-ai.js';
 
 const announceChange = () => window.dispatchEvent(new Event(AUDIO_CHANGED));
 
@@ -30,8 +32,25 @@ export function NarrationRail({ slug }) {
   const [hoverKey, setHoverKey] = useState(null);
   const [playing, setPlaying] = useState(null);
   const [recordEl, setRecordEl] = useState(null);
+  const [alignMsg, setAlignMsg] = useState('');
   const audioRef = useRef(null);
   const sweepRef = useRef(null);
+
+  // Alignment progress toast (model download, transcription, result).
+  useEffect(() => {
+    if (!canRecord) return;
+    let timer;
+    const onStatus = (event) => {
+      setAlignMsg(event.detail);
+      clearTimeout(timer);
+      if (event.detail.endsWith('✓')) timer = setTimeout(() => setAlignMsg(''), 4000);
+    };
+    window.addEventListener(ALIGN_STATUS, onStatus);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener(ALIGN_STATUS, onStatus);
+    };
+  }, [canRecord]);
 
   const refresh = useCallback(() => {
     const els = audioUnits();
@@ -111,12 +130,21 @@ export function NarrationRail({ slug }) {
   const onTimeUpdate = (player, meta) => {
     const sweep = sweepRef.current;
     if (!sweep || !player.duration || !sweep.total) return;
-    const t0 = meta?.t0 ?? 0;
-    const t1 = meta?.t1 ?? player.duration;
-    const progress = Math.min(1, Math.max(0, (player.currentTime - t0) / (t1 - t0 || 1)));
-    const pos = progress * sweep.total;
-    const index = sweep.cums.findIndex((cum) => cum >= pos);
-    if (index === -1 || index === sweep.current) return;
+    let index;
+    if (meta?.words?.length === sweep.spans.length) {
+      // Model-aligned timing: the word whose timestamp we've passed.
+      const t = player.currentTime;
+      index = meta.words.findLastIndex((start) => start <= t);
+      if (index === -1) index = 0;
+    } else {
+      // Estimate: clip time spread across words by character count.
+      const t0 = meta?.t0 ?? 0;
+      const t1 = meta?.t1 ?? player.duration;
+      const progress = Math.min(1, Math.max(0, (player.currentTime - t0) / (t1 - t0 || 1)));
+      index = sweep.cums.findIndex((cum) => cum >= progress * sweep.total);
+      if (index === -1) return;
+    }
+    if (index === sweep.current) return;
     sweep.spans[sweep.current]?.classList.remove('speaking');
     sweep.spans[index].classList.add('speaking');
     sweep.current = index;
@@ -149,6 +177,14 @@ export function NarrationRail({ slug }) {
         if (meta?.t1 && player.currentTime >= meta.t1) {
           player.pause();
           advance();
+          return;
+        }
+        // Jump the dead air and cut fillers the model found.
+        const skip = meta?.skips?.find(
+          ([s, e]) => player.currentTime >= s && player.currentTime < e - 0.05,
+        );
+        if (skip) {
+          player.currentTime = skip[1];
           return;
         }
         onTimeUpdate(player, meta);
@@ -204,6 +240,7 @@ export function NarrationRail({ slug }) {
           );
         })}
       </div>
+      {alignMsg && <div className="align-toast">{alignMsg}</div>}
       {recordEl && (
         <RecordFlow
           slug={slug}
@@ -357,6 +394,9 @@ function RecordFlow({ slug, el, onClose, onChange }) {
     setPhase('saving');
     const trim = bounds && !bounds.silent ? { t0: bounds.t0, t1: bounds.t1 } : null;
     if (await saveRecording(slug, key, blobRef.current, trim)) {
+      // Fire-and-forget: the speech model aligns word timing and finds
+      // filler/pause skips in the background, then updates the meta.
+      alignTake(slug, key, blobRef.current, bounds, tokensOf(el));
       killStream();
       onChange();
       onClose();

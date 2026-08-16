@@ -2,3 +2,8 @@ packages:
   - '.'
 allowBuilds:
   esbuild: true
+  # Node-side extras of @huggingface/transformers; we only use the browser
+  # runtime (onnxruntime-web), so their native build scripts stay off.
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false

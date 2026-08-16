@@ -346,6 +346,44 @@ function selfServe() {
             res.end('ok');
           });
         }
+        // Alignment results (word timestamps, skip ranges) merge into the
+        // take's meta after the fact.
+        if (req.method === 'PUT') {
+          return readBody(req, (body) => {
+            try {
+              const { words, skips } = JSON.parse(body.toString('utf8'));
+              const patch = {};
+              if (
+                Array.isArray(words) &&
+                words.length <= 5000 &&
+                words.every((t) => Number.isFinite(t))
+              ) {
+                patch.words = words;
+              }
+              if (
+                Array.isArray(skips) &&
+                skips.length <= 500 &&
+                skips.every(
+                  (r) =>
+                    Array.isArray(r) && Number.isFinite(r[0]) && Number.isFinite(r[1]) && r[1] > r[0],
+                )
+              ) {
+                patch.skips = skips;
+              }
+              if (!Object.keys(patch).length) {
+                res.statusCode = 400;
+                return res.end('nothing valid');
+              }
+              const meta = readAudioMeta(doc);
+              meta[key] = { ...meta[key], ...patch };
+              writeAudioMeta(doc, meta);
+              res.end('ok');
+            } catch (err) {
+              res.statusCode = 400;
+              res.end(String(err));
+            }
+          });
+        }
         if (req.method === 'DELETE') {
           fs.rmSync(file, { force: true });
           const meta = readAudioMeta(doc);
