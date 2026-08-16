@@ -381,6 +381,35 @@ th {
   font: 600 0.76rem/1.4 var(--sans);
 }
 
+.voice-bar {
+  width: 100%;
+  height: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+
+.voice-bar div {
+  height: 100%;
+  background: var(--accent-2);
+  border-radius: 999px;
+  transition: width 0.15s linear;
+}
+
+.voice-key {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: 600 0.8rem/1.2 var(--mono);
+}
+
+.voice-key:focus {
+  outline: 2px solid var(--accent-2);
+}
+
 /* Playback highlight: the section being narrated, and the estimated
    current word. */
 .narrating {

@@ -398,6 +398,62 @@ function selfServe() {
         res.end();
       });
 
+      // Cloud TTS proxy: keys pass through per-request from the author's
+      // browser (stored only in their localStorage), never persisted here.
+      server.middlewares.use('/__tts', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end();
+        }
+        readBody(req, async (body) => {
+          try {
+            const { provider, key, voice, text } = JSON.parse(body.toString('utf8'));
+            if (typeof key !== 'string' || !key || typeof text !== 'string' || text.length > 5000) {
+              res.statusCode = 400;
+              return res.end('bad request');
+            }
+            let upstream;
+            if (provider === 'elevenlabs') {
+              const voiceId = typeof voice === 'string' && voice ? voice : '21m00Tcm4TlvDq8ikWAM';
+              upstream = await fetch(
+                `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_64`,
+                {
+                  method: 'POST',
+                  headers: { 'xi-api-key': key, 'content-type': 'application/json' },
+                  body: JSON.stringify({ text, model_id: 'eleven_turbo_v2_5' }),
+                },
+              );
+            } else if (provider === 'fish') {
+              upstream = await fetch('https://api.fish.audio/v1/tts', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${key}`,
+                  'content-type': 'application/json',
+                  model: 's1',
+                },
+                body: JSON.stringify({
+                  text,
+                  format: 'mp3',
+                  ...(typeof voice === 'string' && voice ? { reference_id: voice } : {}),
+                }),
+              });
+            } else {
+              res.statusCode = 400;
+              return res.end('unknown provider');
+            }
+            if (!upstream.ok) {
+              res.statusCode = upstream.status;
+              return res.end(await upstream.text().catch(() => 'upstream error'));
+            }
+            res.setHeader('content-type', upstream.headers.get('content-type') ?? 'audio/mpeg');
+            res.end(Buffer.from(await upstream.arrayBuffer()));
+          } catch (err) {
+            res.statusCode = 502;
+            res.end(String(err));
+          }
+        });
+      });
+
       server.middlewares.use('/__export', (req, res) => {
         if (req.method !== 'POST') {
           res.statusCode = 405;

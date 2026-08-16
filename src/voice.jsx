@@ -1,5 +1,5 @@
-import { AudioLines, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AudioLines, Square, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { AUDIO_CHANGED, audioKey, audioUnits, listAudio } from './audio.js';
 import {
   probeDevice,
@@ -9,18 +9,53 @@ import {
   TTS_VOICES,
 } from './tts.js';
 
+const PROVIDERS = [
+  {
+    id: 'kokoro',
+    label: 'Kokoro-82M — local, free',
+    facts: null, // rendered from TTS_MODEL
+  },
+  {
+    id: 'elevenlabs',
+    label: 'ElevenLabs — cloud API',
+    facts: {
+      quality: 'top tier on TTS Arena (closed model)',
+      cost: 'paid API — usage billed to your key',
+      privacy: 'text is sent to ElevenLabs; key stays in this browser',
+      voiceHint: 'voice id (blank = Rachel)',
+    },
+  },
+  {
+    id: 'fish',
+    label: 'Fish Audio S1 — cloud API',
+    facts: {
+      quality: 'top open-family vendor on Artificial Analysis arena',
+      cost: 'paid API — usage billed to your key',
+      privacy: 'text is sent to Fish Audio; key stays in this browser',
+      voiceHint: 'reference/voice id (blank = default)',
+    },
+  },
+];
+
+const stored = (key, fallback = '') => localStorage.getItem(key) ?? fallback;
+
 /**
- * The voice panel: what this machine can run, what the model actually is
- * (size, license, engine — up front, before any download), and the render
- * button that fills unread sections with clearly-marked synthetic speech.
+ * The voice panel: what this machine can run, what each engine actually is
+ * (size, license, cost, where your text goes — up front, before anything
+ * downloads or bills), and the render flow with progress and a stop button.
  */
 export function VoicePanel({ slug, onClose }) {
   const [probe, setProbe] = useState(null);
+  const [provider, setProvider] = useState(() => stored('selfdoc-tts-provider', 'kokoro'));
   const [dtype, setDtype] = useState(null);
-  const [voice, setVoice] = useState('af_heart');
+  const [voice, setVoice] = useState(() => stored('selfdoc-tts-voice', 'af_heart'));
+  const [apiKey, setApiKey] = useState(() => stored(`selfdoc-tts-key-${stored('selfdoc-tts-provider', 'kokoro')}`));
+  const [cloudVoice, setCloudVoice] = useState(() => stored('selfdoc-tts-cloud-voice'));
   const [missing, setMissing] = useState(0);
   const [status, setStatus] = useState('');
+  const [pct, setPct] = useState(null);
   const [busy, setBusy] = useState(false);
+  const cancelRef = useRef({ current: false });
 
   useEffect(() => {
     probeDevice().then((p) => {
@@ -28,6 +63,11 @@ export function VoicePanel({ slug, onClose }) {
       setDtype(p.recommended.dtype);
     });
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('selfdoc-tts-provider', provider);
+    setApiKey(stored(`selfdoc-tts-key-${provider}`));
+  }, [provider]);
 
   useEffect(() => {
     const refresh = () => {
@@ -41,17 +81,34 @@ export function VoicePanel({ slug, onClose }) {
     return () => window.removeEventListener(AUDIO_CHANGED, refresh);
   }, [slug]);
 
+  const meta = PROVIDERS.find((p) => p.id === provider);
+  const needsKey = provider !== 'kokoro';
+
   const render = async () => {
     setBusy(true);
+    setPct(null);
+    cancelRef.current.current = false;
     try {
       await synthesizeMissing(
         slug,
-        { dtype, device: probe.recommended.device, voice },
-        setStatus,
+        {
+          provider,
+          dtype,
+          device: probe.recommended.device,
+          voice,
+          apiKey,
+          cloudVoice: cloudVoice.trim(),
+        },
+        (text, fraction = null) => {
+          setStatus(text);
+          setPct(fraction);
+        },
+        cancelRef.current,
       );
     } catch (err) {
-      setStatus(`failed — ${String(err).slice(0, 90)}`);
+      setStatus(`failed — ${String(err).slice(0, 110)}`);
     } finally {
+      setPct(null);
       setBusy(false);
     }
   };
@@ -65,64 +122,137 @@ export function VoicePanel({ slug, onClose }) {
         </button>
       </div>
 
-      {probe && (
-        <p className="voice-probe">
-          this machine: {probe.webgpu ? `WebGPU ✓ (${probe.maxBufferMB} MB buffers` : 'no WebGPU ('}
-          {probe.webgpu && probe.f16 ? ', f16' : ''}) · {probe.cores} cores
-          {probe.memoryGB ? ` · ~${probe.memoryGB} GB` : ''} → recommended:{' '}
-          <strong>
-            {probe.recommended.device} / {probe.recommended.dtype}
-          </strong>
-        </p>
+      <label className="voice-row">
+        engine
+        <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {provider === 'kokoro' && (
+        <>
+          {probe && (
+            <p className="voice-probe">
+              this machine: {probe.webgpu ? `WebGPU ✓ (${probe.maxBufferMB} MB buffers` : 'no WebGPU ('}
+              {probe.webgpu && probe.f16 ? ', f16' : ''}) · {probe.cores} cores
+              {probe.memoryGB ? ` · ~${probe.memoryGB} GB` : ''} → recommended:{' '}
+              <strong>
+                {probe.recommended.device} / {probe.recommended.dtype}
+              </strong>
+            </p>
+          )}
+          <dl className="voice-facts">
+            <dt>model</dt>
+            <dd>
+              <a href={TTS_MODEL.hf} target="_blank" rel="noreferrer">
+                {TTS_MODEL.name}
+              </a>{' '}
+              · {TTS_MODEL.params}
+            </dd>
+            <dt>engine</dt>
+            <dd>{TTS_MODEL.type}</dd>
+            <dt>license</dt>
+            <dd>{TTS_MODEL.license}</dd>
+            <dt>languages</dt>
+            <dd>{TTS_MODEL.languages}</dd>
+          </dl>
+          <label className="voice-row">
+            variant
+            <select value={dtype ?? ''} onChange={(e) => setDtype(e.target.value)}>
+              {TTS_VARIANTS.map((v) => (
+                <option key={v.dtype} value={v.dtype}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="voice-row">
+            voice
+            <select
+              value={voice}
+              onChange={(e) => {
+                setVoice(e.target.value);
+                localStorage.setItem('selfdoc-tts-voice', e.target.value);
+              }}
+            >
+              {TTS_VOICES.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
       )}
 
-      <dl className="voice-facts">
-        <dt>model</dt>
-        <dd>
-          <a href={TTS_MODEL.hf} target="_blank" rel="noreferrer">
-            {TTS_MODEL.name}
-          </a>{' '}
-          · {TTS_MODEL.params}
-        </dd>
-        <dt>engine</dt>
-        <dd>{TTS_MODEL.type}</dd>
-        <dt>license</dt>
-        <dd>{TTS_MODEL.license}</dd>
-        <dt>languages</dt>
-        <dd>{TTS_MODEL.languages}</dd>
-      </dl>
-
-      <label className="voice-row">
-        variant
-        <select value={dtype ?? ''} onChange={(e) => setDtype(e.target.value)}>
-          {TTS_VARIANTS.map((v) => (
-            <option key={v.dtype} value={v.dtype}>
-              {v.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="voice-row">
-        voice
-        <select value={voice} onChange={(e) => setVoice(e.target.value)}>
-          {TTS_VOICES.map(([id, label]) => (
-            <option key={id} value={id}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {needsKey && (
+        <>
+          <dl className="voice-facts">
+            <dt>quality</dt>
+            <dd>{meta.facts.quality}</dd>
+            <dt>cost</dt>
+            <dd>{meta.facts.cost}</dd>
+            <dt>privacy</dt>
+            <dd>{meta.facts.privacy}</dd>
+          </dl>
+          <input
+            className="voice-key"
+            type="password"
+            placeholder="API key"
+            value={apiKey}
+            onChange={(e) => {
+              setApiKey(e.target.value);
+              localStorage.setItem(`selfdoc-tts-key-${provider}`, e.target.value);
+            }}
+          />
+          <input
+            className="voice-key"
+            type="text"
+            placeholder={meta.facts.voiceHint}
+            value={cloudVoice}
+            onChange={(e) => {
+              setCloudVoice(e.target.value);
+              localStorage.setItem('selfdoc-tts-cloud-voice', e.target.value);
+            }}
+          />
+        </>
+      )}
 
       {status && <p className="voice-status">{status}</p>}
-      <button
-        type="button"
-        className="shell-btn primary"
-        disabled={busy || !probe || !missing}
-        onClick={render}
-      >
-        <AudioLines size={12} />{' '}
-        {missing ? `render ${missing} unread section${missing === 1 ? '' : 's'}` : 'all sections narrated'}
-      </button>
+      {pct != null && (
+        <div className="voice-bar">
+          <div style={{ width: `${Math.round(pct * 100)}%` }} />
+        </div>
+      )}
+
+      {busy ? (
+        <button
+          type="button"
+          className="shell-btn"
+          onClick={() => {
+            cancelRef.current.current = true;
+            setStatus('stopping…');
+          }}
+        >
+          <Square size={12} /> stop
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="shell-btn primary"
+          disabled={!probe || !missing || (needsKey && !apiKey.trim())}
+          onClick={render}
+        >
+          <AudioLines size={12} />{' '}
+          {missing
+            ? `render ${missing} unread section${missing === 1 ? '' : 's'}`
+            : 'all sections narrated'}
+        </button>
+      )}
       <p className="rec-hint">
         Synthetic takes are marked as synthetic for readers and never count as
         your reading. Re-recording a section with your own voice replaces its

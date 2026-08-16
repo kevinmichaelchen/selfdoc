@@ -91,13 +91,18 @@ export function ttsText(el) {
     .trim();
 }
 
+class Cancelled extends Error {}
+
 /**
  * Re-encode synthesized PCM through MediaRecorder so synthetic takes are the
- * same 32 kbps opus/webm as human ones. Realtime by nature (MediaRecorder
- * can't run offline), which is fine for a one-time authoring step.
+ * same 32 kbps opus/webm as human ones. Realtime by nature — MediaRecorder
+ * can't run faster than the clock — which is why this phase gets a progress
+ * bar and a cancel check.
  */
-async function encodeOpus(float32, sampleRate) {
+async function encodeOpus(float32, sampleRate, onPct, cancel) {
   const ctx = new AudioContext();
+  const duration = float32.length / sampleRate;
+  let cancelled = false;
   try {
     const buffer = ctx.createBuffer(1, float32.length, sampleRate);
     buffer.copyToChannel(float32, 0);
@@ -112,9 +117,19 @@ async function encodeOpus(float32, sampleRate) {
       recorder.onstop = resolve;
     });
     source.onended = () => recorder.stop();
+    const startedAt = ctx.currentTime;
+    const ticker = setInterval(() => {
+      onPct?.(Math.min(1, (ctx.currentTime - startedAt) / duration));
+      if (cancel?.current && !cancelled) {
+        cancelled = true;
+        source.stop();
+      }
+    }, 150);
     recorder.start();
     source.start();
     await done;
+    clearInterval(ticker);
+    if (cancelled) throw new Cancelled();
     return new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
   } finally {
     ctx.close();
@@ -124,25 +139,67 @@ async function encodeOpus(float32, sampleRate) {
 let ttsPromise = null;
 let ttsConfig = '';
 
-export async function synthesizeMissing(slug, { dtype, device, voice }, onProgress) {
-  if (import.meta.env.DEV) {
-    const { KokoroTTS, TextSplitterStream } = await import('kokoro-js');
-    const config = `${dtype}/${device}`;
-    if (ttsConfig !== config) {
-      ttsConfig = config;
-      onProgress(`loading ${TTS_MODEL.name} (${dtype}, ${device})…`);
-      ttsPromise = KokoroTTS.from_pretrained(TTS_MODEL.repo, {
-        dtype,
-        device,
-        progress_callback: (p) => {
-          if (p.status === 'progress' && p.file?.endsWith('.onnx')) {
-            onProgress(`downloading voice model ${Math.round(p.progress ?? 0)}%`);
-          }
-        },
-      });
-    }
-    const tts = await ttsPromise;
+async function kokoroSynthesize({ dtype, device, voice }, text, onProgress, cancel) {
+  const { KokoroTTS, TextSplitterStream } = await import('kokoro-js');
+  const config = `${dtype}/${device}`;
+  if (ttsConfig !== config) {
+    ttsConfig = config;
+    onProgress(`loading ${TTS_MODEL.name} (${dtype}, ${device})…`);
+    ttsPromise = KokoroTTS.from_pretrained(TTS_MODEL.repo, {
+      dtype,
+      device,
+      progress_callback: (p) => {
+        if (p.status === 'progress' && p.file?.endsWith('.onnx')) {
+          onProgress(`downloading voice model…`, (p.progress ?? 0) / 100);
+        }
+      },
+    });
+  }
+  const tts = await ttsPromise;
+  // Stream through the splitter so long sections stay under the model's
+  // phoneme limit; concatenate the sentence chunks.
+  const splitter = new TextSplitterStream();
+  const stream = tts.stream(splitter, { voice });
+  splitter.push(text);
+  splitter.close();
+  const parts = [];
+  let sampleRate = 24_000;
+  for await (const chunk of stream) {
+    if (cancel?.current) throw new Cancelled();
+    parts.push(chunk.audio.audio);
+    sampleRate = chunk.audio.sampling_rate;
+  }
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const pcm = new Float32Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    pcm.set(part, offset);
+    offset += part.length;
+  }
+  return { pcm, sampleRate };
+}
 
+// Cloud providers go through the dev middleware (no CORS, and the request
+// shape stays in one place). Keys live in the author's localStorage only.
+async function cloudSynthesize(provider, apiKey, cloudVoice, text) {
+  const res = await fetch('/__tts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider, key: apiKey, voice: cloudVoice, text }),
+  });
+  if (!res.ok) throw new Error(`${provider}: ${(await res.text()).slice(0, 140)}`);
+  return await res.blob();
+}
+
+export const PROVIDER_LABELS = {
+  kokoro: 'Kokoro-82M',
+  elevenlabs: 'ElevenLabs',
+  fish: 'Fish Audio',
+};
+
+export async function synthesizeMissing(slug, options, onProgress, cancel) {
+  if (import.meta.env.DEV) {
+    const { provider = 'kokoro', voice, apiKey, cloudVoice } = options;
     const recorded = await listAudio(slug);
     const missing = audioUnits()
       .map((el) => ({ el, key: audioKey(el) }))
@@ -152,48 +209,52 @@ export async function synthesizeMissing(slug, { dtype, device, voice }, onProgre
       return;
     }
 
-    for (const [i, unit] of missing.entries()) {
-      const label = unit.el.textContent.trim().slice(0, 40);
-      onProgress(`${i + 1}/${missing.length} · reading “${label}…”`);
-      const text = ttsText(unit.el);
-      if (!text) continue;
+    let rendered = 0;
+    try {
+      for (const [i, unit] of missing.entries()) {
+        if (cancel?.current) throw new Cancelled();
+        const label = unit.el.textContent.trim().slice(0, 36);
+        const text = ttsText(unit.el);
+        if (!text) continue;
 
-      // Stream through the splitter so long sections stay under the
-      // model's phoneme limit; concatenate the sentence chunks.
-      const splitter = new TextSplitterStream();
-      const stream = tts.stream(splitter, { voice });
-      splitter.push(text);
-      splitter.close();
-      const parts = [];
-      let sampleRate = 24_000;
-      for await (const chunk of stream) {
-        parts.push(chunk.audio.audio);
-        sampleRate = chunk.audio.sampling_rate;
-      }
-      const total = parts.reduce((n, p) => n + p.length, 0);
-      const pcm = new Float32Array(total);
-      let offset = 0;
-      for (const part of parts) {
-        pcm.set(part, offset);
-        offset += part.length;
-      }
+        let blob;
+        if (provider === 'kokoro') {
+          onProgress(`${i + 1}/${missing.length} · reading “${label}…”`);
+          const { pcm, sampleRate } = await kokoroSynthesize(options, text, onProgress, cancel);
+          onProgress(`${i + 1}/${missing.length} · encoding “${label}…”`, 0);
+          blob = await encodeOpus(pcm, sampleRate, (pct) => {
+            onProgress(`${i + 1}/${missing.length} · encoding “${label}…”`, pct);
+          }, cancel);
+        } else {
+          onProgress(`${i + 1}/${missing.length} · requesting “${label}…”`);
+          blob = await cloudSynthesize(provider, apiKey, cloudVoice, text);
+        }
+        if (cancel?.current) throw new Cancelled();
 
-      onProgress(`${i + 1}/${missing.length} · encoding “${label}…”`);
-      const blob = await encodeOpus(pcm, sampleRate);
-      const bounds = await findSpeechBounds(blob);
-      await saveRecording(
-        slug,
-        unit.key,
-        blob,
-        bounds.silent ? null : { t0: bounds.t0, t1: bounds.t1 },
-      );
-      await fetch(`/__audio/${slug}/${unit.key}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tts: { model: TTS_MODEL.name, voice } }),
-      });
-      window.dispatchEvent(new Event(AUDIO_CHANGED));
+        const bounds = await findSpeechBounds(blob);
+        await saveRecording(
+          slug,
+          unit.key,
+          blob,
+          bounds.silent ? null : { t0: bounds.t0, t1: bounds.t1 },
+        );
+        await fetch(`/__audio/${slug}/${unit.key}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            tts: { model: PROVIDER_LABELS[provider] ?? provider, voice: voice ?? cloudVoice ?? '' },
+          }),
+        });
+        rendered++;
+        window.dispatchEvent(new Event(AUDIO_CHANGED));
+      }
+      onProgress(`rendered ${rendered} section(s) ✓`);
+    } catch (err) {
+      if (err instanceof Cancelled) {
+        onProgress(`stopped — ${rendered} section(s) kept ✗`);
+        return;
+      }
+      throw err;
     }
-    onProgress(`rendered ${missing.length} section(s) ✓`);
   }
 }

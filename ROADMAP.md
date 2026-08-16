@@ -2,6 +2,23 @@
 
 Logged, not built.
 
+## Voice-cloned synthetic fill (endorsed — next up)
+
+Synthetic sections currently speak in a stock voice. Kyutai Pocket TTS
+(100M, weights CC-BY-4.0, 6× realtime on two M4 cores) clones a voice from a
+wav — and every selfdoc author with any recorded section already has
+reference audio on disk. Clone from the author's real takes so synthetic
+fill approximates their voice, still marked synthetic. Browser story is
+emerging; may need a small native/CLI step in the dev middleware.
+
+## Reader-side cloud rendering
+
+The Voice panel is author-side. A reader of the deployed site could
+optionally paste their own ElevenLabs/Fish key to render unread sections
+on demand in their browser (direct API calls, key in their localStorage).
+Needs CORS verification per provider and a clear "this costs you money"
+affordance.
+
 ## Library watch (researched 2026-08-15)
 
 Findings from a review of the new TanStack content libraries:
