@@ -24,16 +24,21 @@ export function audioUnits() {
   ].filter(isAudioUnit);
 }
 
-export async function listRecorded(slug) {
+/**
+ * Recorded sections for a doc: a map of key → trim bounds ({t0, t1} seconds,
+ * or null for untrimmed legacy takes). Bounds mark where speech starts and
+ * ends; playback and the word sweep skip the silence outside them.
+ */
+export async function listAudio(slug) {
   if (import.meta.env.DEV) {
     try {
       const res = await fetch(`/__audio?doc=${slug}`);
-      return res.ok ? await res.json() : [];
+      return res.ok ? await res.json() : {};
     } catch {
-      return [];
+      return {};
     }
   }
-  return typeof __AUDIO_INDEX__ !== 'undefined' ? (__AUDIO_INDEX__[slug] ?? []) : [];
+  return typeof __AUDIO_INDEX__ !== 'undefined' ? (__AUDIO_INDEX__[slug] ?? {}) : {};
 }
 
 export function audioUrl(slug, key) {
@@ -41,9 +46,49 @@ export function audioUrl(slug, key) {
   return import.meta.env.DEV ? `/__audio/${slug}/${key}` : `audio/${slug}/${key}.webm`;
 }
 
-export async function saveRecording(slug, key, blob) {
-  const res = await fetch(`/__audio/${slug}/${key}`, { method: 'POST', body: blob });
+export async function saveRecording(slug, key, blob, bounds) {
+  const query = bounds ? `?t0=${bounds.t0}&t1=${bounds.t1}` : '';
+  const res = await fetch(`/__audio/${slug}/${key}${query}`, { method: 'POST', body: blob });
   return res.ok;
+}
+
+/**
+ * Find where speech starts and ends in a take (windowed RMS over the decoded
+ * samples), so leading/trailing silence is cut without re-encoding: the trim
+ * is stored as bounds and honored at playback.
+ */
+export async function findSpeechBounds(blob) {
+  const ctx = new AudioContext();
+  try {
+    const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const data = buffer.getChannelData(0);
+    const sampleRate = buffer.sampleRate;
+    const WINDOW = 1024;
+    const THRESHOLD = 0.015;
+    let firstSample = -1;
+    let lastSample = -1;
+    for (let i = 0; i < data.length; i += WINDOW) {
+      const end = Math.min(i + WINDOW, data.length);
+      let sum = 0;
+      for (let j = i; j < end; j++) sum += data[j] * data[j];
+      if (Math.sqrt(sum / (end - i)) > THRESHOLD) {
+        if (firstSample < 0) firstSample = i;
+        lastSample = end;
+      }
+    }
+    const round = (n) => Math.round(n * 100) / 100;
+    if (firstSample < 0) {
+      return { t0: 0, t1: round(buffer.duration), duration: buffer.duration, silent: true };
+    }
+    return {
+      t0: round(Math.max(0, firstSample / sampleRate - 0.08)),
+      t1: round(Math.min(buffer.duration, lastSample / sampleRate + 0.15)),
+      duration: buffer.duration,
+      silent: false,
+    };
+  } finally {
+    ctx.close();
+  }
 }
 
 export async function deleteRecording(slug, key) {

@@ -53,6 +53,41 @@ judged is rewritten — same anchoring rule the local comments already use.
 An `<Editable prop="title">` wrapper so a callout's title or a stat's value is
 inline-editable, patching the JSX attribute through the same offset splice.
 
+## Narration cleanup: filler words and mid-clip silences
+
+Leading/trailing silence is already trimmed (RMS bounds stored beside the
+take). The next level — cutting "um"s and long mid-clip pauses — needs models:
+
+- **Silero VAD** for mid-clip silence segmentation: ~2 MB ONNX, runs in the
+  browser via onnxruntime-web, purpose-built for speech/non-speech boundaries.
+  Cut or compress the non-speech gaps it finds.
+- **CrisperWhisper** (or whisper-timestamped) for filler words: verbatim ASR
+  with word-level timestamps that *keeps* disfluencies. Important gotcha:
+  standard Whisper models deliberately omit "um/uh" from transcripts, so they
+  can't locate what they don't emit — verbatim variants are the point.
+- Cutting audio requires re-encoding (browsers decode opus but don't encode
+  it); either accept WAV output or do the splice server-side with ffmpeg in
+  the dev middleware.
+
+AI-gated: model-driven, so it waits behind the same review gate as the
+assistant below.
+
+## Word-accurate narration highlight (forced alignment)
+
+Today's playback highlight estimates timing by spreading the clip across the
+words by character count. The accurate version is forced alignment, and it's
+easier than general transcription because the target text is already known:
+
+- Run a small on-device STT over each take — **Moonshine tiny/base**
+  (27M/61M, built for browser/edge, faster than whisper-tiny) or
+  **whisper-tiny/base via Transformers.js** (`return_timestamps: 'word'`),
+  or **Vosk WASM** (word timestamps native).
+- Align the (imperfect) transcript to the known section text with dynamic
+  time warping / edit-distance matching; store per-word timestamps in the
+  take's meta beside the trim bounds.
+- Fits the AI constraints: read-only, on-device, never writes content — but
+  it's still model-driven, so it waits behind the review gate.
+
 ## Local-model reading assistant
 
 Gated: no AI features until the foundation is solid and passes review.

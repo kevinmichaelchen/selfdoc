@@ -84,13 +84,33 @@ function audioKeys(doc) {
   }
 }
 
+const metaFile = (doc) => path.join(AUDIO_DIR, doc, 'meta.json');
+
+function readAudioMeta(doc) {
+  try {
+    return JSON.parse(fs.readFileSync(metaFile(doc), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeAudioMeta(doc, meta) {
+  fs.writeFileSync(metaFile(doc), `${JSON.stringify(meta, null, 2)}\n`);
+}
+
+/** key → trim bounds ({t0, t1}) or null for untrimmed takes. */
+function audioIndex(doc) {
+  const meta = readAudioMeta(doc);
+  return Object.fromEntries(audioKeys(doc).map((key) => [key, meta[key] ?? null]));
+}
+
 function allAudioIndex() {
   try {
     return Object.fromEntries(
       fs
         .readdirSync(AUDIO_DIR)
         .filter((d) => SLUG.test(d))
-        .map((d) => [d, audioKeys(d)]),
+        .map((d) => [d, audioIndex(d)]),
     );
   } catch {
     return {};
@@ -287,7 +307,7 @@ function selfServe() {
             return res.end('bad doc');
           }
           res.setHeader('content-type', 'application/json');
-          return res.end(JSON.stringify(audioKeys(doc)));
+          return res.end(JSON.stringify(audioIndex(doc)));
         }
         const match = route.match(/^\/([^/]+)\/([^/]+)$/);
         const doc = match?.[1] ?? '';
@@ -313,11 +333,24 @@ function selfServe() {
             }
             fs.mkdirSync(path.dirname(file), { recursive: true });
             fs.writeFileSync(file, body);
+            const params = new URLSearchParams(query ?? '');
+            const t0 = Number(params.get('t0'));
+            const t1 = Number(params.get('t1'));
+            const meta = readAudioMeta(doc);
+            if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0 && t0 >= 0) {
+              meta[key] = { t0, t1 };
+            } else {
+              delete meta[key];
+            }
+            writeAudioMeta(doc, meta);
             res.end('ok');
           });
         }
         if (req.method === 'DELETE') {
           fs.rmSync(file, { force: true });
+          const meta = readAudioMeta(doc);
+          delete meta[key];
+          writeAudioMeta(doc, meta);
           return res.end('ok');
         }
         res.statusCode = 405;
@@ -375,7 +408,7 @@ export default defineConfig({
     __AUDIO_INDEX__: JSON.stringify(
       EXPORT_DOC
         ? EXPORT_AUDIO
-          ? { [EXPORT_DOC]: audioKeys(EXPORT_DOC) }
+          ? { [EXPORT_DOC]: audioIndex(EXPORT_DOC) }
           : {}
         : allAudioIndex(),
     ),

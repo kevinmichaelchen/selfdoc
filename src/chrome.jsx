@@ -1,6 +1,6 @@
 import { Check, Copy, Download, Mic, PenLine } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { AUDIO_CHANGED, audioKey, audioUnits, deleteRecording, listRecorded } from './audio.js';
+import { AUDIO_CHANGED, audioKey, audioUnits, deleteRecording, listAudio } from './audio.js';
 import { sources } from './docs.js';
 import { formatDuration, getProvenance } from './provenance.js';
 
@@ -70,11 +70,12 @@ function AudioCoverage({ slug }) {
   useEffect(() => {
     const refresh = () => {
       const unitSet = new Set(audioUnits().map(audioKey));
-      listRecorded(slug).then((recorded) => {
+      listAudio(slug).then((recorded) => {
+        const keys = Object.keys(recorded);
         setStat({
           total: unitSet.size,
-          done: [...unitSet].filter((key) => recorded.includes(key)).length,
-          stale: recorded.filter((key) => !unitSet.has(key)),
+          done: [...unitSet].filter((key) => keys.includes(key)).length,
+          stale: keys.filter((key) => !unitSet.has(key)),
         });
       });
     };
@@ -122,7 +123,7 @@ function ExportMenu({ slug }) {
     menuRef.current?.removeAttribute('open');
     if (audio) {
       const units = new Set(audioUnits().map(audioKey));
-      const recorded = new Set(await listRecorded(slug));
+      const recorded = new Set(Object.keys(await listAudio(slug)));
       const missing = [...units].filter((key) => !recorded.has(key)).length;
       if (missing) {
         window.alert(

@@ -1,13 +1,13 @@
-import { Check, Mic, Pause, Play, RotateCcw, Square, Trash2, X } from 'lucide-react';
+import { Check, Mic, Pause, Play, RotateCcw, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AUDIO_CHANGED,
   audioKey,
   audioUnits,
   audioUrl,
-  deleteRecording,
+  findSpeechBounds,
   isAudioUnit,
-  listRecorded,
+  listAudio,
   saveRecording,
   STOP_NARRATION,
   unwrapWords,
@@ -19,9 +19,10 @@ const announceChange = () => window.dispatchEvent(new Event(AUDIO_CHANGED));
 /**
  * The narration rail: no mode, no button. Recorded sections carry a subtle
  * play control in the margin; playing continues section-to-section through
- * everything narrated, with an estimated word-sweep highlight (audio time
- * distributed across words by character count — an approximation, not
- * speech alignment). In dev, hovering an unrecorded section reveals a mic.
+ * everything narrated, honoring each take's silence-trim bounds, with an
+ * estimated word-sweep highlight (audio time distributed across words by
+ * character count — an approximation, not speech alignment). In dev,
+ * hovering a section reveals a mic: record it, or re-record a stale read.
  */
 export function NarrationRail({ slug }) {
   const canRecord = import.meta.env.DEV;
@@ -34,8 +35,7 @@ export function NarrationRail({ slug }) {
 
   const refresh = useCallback(() => {
     const els = audioUnits();
-    listRecorded(slug).then((recorded) => {
-      const set = new Set(recorded);
+    listAudio(slug).then((recorded) => {
       setUnits(
         els.map((el) => {
           const rect = el.getBoundingClientRect();
@@ -43,7 +43,8 @@ export function NarrationRail({ slug }) {
           return {
             el,
             key,
-            recorded: set.has(key),
+            recorded: key in recorded,
+            meta: recorded[key] ?? null,
             top: rect.top + window.scrollY,
             left: Math.max(6, rect.left - 36),
           };
@@ -86,13 +87,13 @@ export function NarrationRail({ slug }) {
     };
   }, [stopPlayback]);
 
-  // Hover reveals the record call-to-action on silent sections. The mic sits
-  // in the margin, so keep the last hovered target until another section is
-  // hovered — hiding it mid-travel would make it unclickable.
+  // Hover reveals the mic on sections. It sits in the margin, so keep the
+  // last hovered target until another section is hovered — hiding it
+  // mid-travel would make it unclickable.
   useEffect(() => {
     if (!canRecord) return;
     const onOver = (event) => {
-      if (event.target.closest?.('.rail-btn, .record-panel')) return;
+      if (event.target.closest?.('.rail-btn, .rec-overlay')) return;
       const note = event.target.closest?.('aside.note[data-node-start]');
       const unit = note ?? event.target.closest?.('[data-edit-start]');
       if (isAudioUnit(unit)) setHoverKey(audioKey(unit));
@@ -107,10 +108,13 @@ export function NarrationRail({ slug }) {
     el.classList.add('narrating');
   };
 
-  const onTimeUpdate = (player) => {
+  const onTimeUpdate = (player, meta) => {
     const sweep = sweepRef.current;
     if (!sweep || !player.duration || !sweep.total) return;
-    const pos = (player.currentTime / player.duration) * sweep.total;
+    const t0 = meta?.t0 ?? 0;
+    const t1 = meta?.t1 ?? player.duration;
+    const progress = Math.min(1, Math.max(0, (player.currentTime - t0) / (t1 - t0 || 1)));
+    const pos = progress * sweep.total;
     const index = sweep.cums.findIndex((cum) => cum >= pos);
     if (index === -1 || index === sweep.current) return;
     sweep.spans[sweep.current]?.classList.remove('speaking');
@@ -134,9 +138,21 @@ export function NarrationRail({ slug }) {
         return;
       }
       const unit = narrated[i];
+      const meta = unit.meta;
+      const advance = () => playIndex(i + 1);
       player.src = audioUrl(slug, unit.key);
-      player.onended = () => playIndex(i + 1);
-      player.ontimeupdate = () => onTimeUpdate(player);
+      player.onloadedmetadata = () => {
+        if (meta?.t0) player.currentTime = meta.t0;
+      };
+      player.onended = advance;
+      player.ontimeupdate = () => {
+        if (meta?.t1 && player.currentTime >= meta.t1) {
+          player.pause();
+          advance();
+          return;
+        }
+        onTimeUpdate(player, meta);
+      };
       beginSweep(unit.el);
       setPlaying(unit.key);
       player.play();
@@ -148,42 +164,48 @@ export function NarrationRail({ slug }) {
     <>
       <div className="narration-layer">
         {units.map((unit) => {
-          if (unit.recorded) {
-            const active = playing === unit.key;
-            return (
-              <button
-                key={unit.key}
-                type="button"
-                className={`rail-btn${active ? ' playing' : ''}`}
-                style={{ top: unit.top, left: unit.left }}
-                aria-label={active ? 'Pause narration' : 'Play narration from this section'}
-                title={active ? 'Pause' : 'Listen from here'}
-                onClick={() => playFrom(unit.key)}
-              >
-                {active ? <Pause size={12} /> : <Play size={12} />}
-              </button>
-            );
-          }
-          if (canRecord && hoverKey === unit.key) {
-            return (
-              <button
-                key={unit.key}
-                type="button"
-                className="rail-btn rail-record"
-                style={{ top: unit.top, left: unit.left }}
-                aria-label="Record yourself reading this section"
-                title="This section needs your voice"
-                onClick={() => setRecordEl(unit.el)}
-              >
-                <Mic size={12} />
-              </button>
-            );
-          }
-          return null;
+          const hovered = canRecord && hoverKey === unit.key;
+          return (
+            <span key={unit.key}>
+              {unit.recorded && (
+                <button
+                  type="button"
+                  className={`rail-btn${playing === unit.key ? ' playing' : ''}`}
+                  style={{ top: unit.top, left: unit.left }}
+                  aria-label={
+                    playing === unit.key ? 'Pause narration' : 'Play narration from this section'
+                  }
+                  title={playing === unit.key ? 'Pause' : 'Listen from here'}
+                  onClick={() => playFrom(unit.key)}
+                >
+                  {playing === unit.key ? <Pause size={12} /> : <Play size={12} />}
+                </button>
+              )}
+              {hovered && (
+                <button
+                  type="button"
+                  className="rail-btn rail-record"
+                  style={{ top: unit.top + (unit.recorded ? 30 : 0), left: unit.left }}
+                  aria-label={
+                    unit.recorded
+                      ? 'Re-record this section'
+                      : 'Record yourself reading this section'
+                  }
+                  title={unit.recorded ? 'Read it again' : 'This section needs your voice'}
+                  onClick={() => {
+                    window.dispatchEvent(new Event(STOP_NARRATION));
+                    setRecordEl(unit.el);
+                  }}
+                >
+                  <Mic size={12} />
+                </button>
+              )}
+            </span>
+          );
         })}
       </div>
       {recordEl && (
-        <RecordPanel
+        <RecordFlow
           slug={slug}
           el={recordEl}
           onClose={() => setRecordEl(null)}
@@ -194,126 +216,233 @@ export function NarrationRail({ slug }) {
   );
 }
 
+/** Live frequency bars driven by the microphone stream. */
+function Waveform({ stream }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const ctx = new AudioContext();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const bins = new Uint8Array(analyser.frequencyBinCount);
+    const canvas = canvasRef.current;
+    const paint = canvas.getContext('2d');
+    let raf;
+    const draw = () => {
+      analyser.getByteFrequencyData(bins);
+      paint.clearRect(0, 0, canvas.width, canvas.height);
+      const barWidth = canvas.width / bins.length;
+      bins.forEach((value, i) => {
+        const height = Math.max(2, (value / 255) * canvas.height);
+        paint.fillStyle = '#246f61';
+        paint.fillRect(i * barWidth, (canvas.height - height) / 2, barWidth - 1.5, height);
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => {
+      cancelAnimationFrame(raf);
+      ctx.close();
+    };
+  }, [stream]);
+  return <canvas ref={canvasRef} className="rec-wave" width="420" height="90" />;
+}
+
 /**
- * You have to hear yourself: one take from the microphone, a mandatory
- * listen in preview, then keep it or read it again.
+ * The recording ritual: a flashing 3-second countdown (Escape cancels), a
+ * floating live waveform of your voice while the take runs, then an explicit
+ * save-or-discard decision. Leading and trailing silence is measured on save
+ * and stored as trim bounds — the take itself stays untouched.
  */
-function RecordPanel({ slug, el, onClose, onChange }) {
+function RecordFlow({ slug, el, onClose, onChange }) {
   const key = audioKey(el);
-  const [phase, setPhase] = useState('idle'); // idle | recording | preview
-  const [hasSaved, setHasSaved] = useState(false);
+  const [phase, setPhase] = useState('countdown'); // countdown | live | review | saving
+  const [count, setCount] = useState(3);
+  const [stream, setStream] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [version, setVersion] = useState(0);
+  const [bounds, setBounds] = useState(null);
   const [error, setError] = useState('');
   const recorderRef = useRef(null);
   const blobRef = useRef(null);
 
+  const killStream = () => {
+    recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
+    recorderRef.current = null;
+  };
+
   useEffect(() => {
-    setPhase('idle');
-    setPreviewUrl(null);
-    setError('');
-    blobRef.current = null;
     el.classList.add('comment-target');
-    listRecorded(slug).then((keys) => setHasSaved(keys.includes(key)));
     return () => {
       el.classList.remove('comment-target');
-      recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
+      killStream();
     };
-  }, [slug, key, el]);
+  }, [el]);
 
-  const start = async () => {
-    setError('');
-    window.dispatchEvent(new Event(STOP_NARRATION));
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // Ask for the mic up front so the countdown ends straight into a live take.
+  useEffect(() => {
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((s) => {
+        if (cancelled) return s.getTracks().forEach((t) => t.stop());
+        setStream(s);
+      })
+      .catch((err) => setError(`microphone unavailable — ${err.message}`));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The countdown, and Escape-to-cancel at every phase before review.
+  useEffect(() => {
+    if (phase !== 'countdown' || !stream) return;
+    if (count === 0) {
       const recorder = new MediaRecorder(stream);
       const chunks = [];
       recorder.ondataavailable = (event) => chunks.push(event.data);
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
+      recorder.onstop = async () => {
         blobRef.current = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         setPreviewUrl(URL.createObjectURL(blobRef.current));
-        setPhase('preview');
+        try {
+          setBounds(await findSpeechBounds(blobRef.current));
+        } catch {
+          setBounds(null);
+        }
+        setPhase('review');
       };
       recorderRef.current = recorder;
       recorder.start();
-      setPhase('recording');
-    } catch (err) {
-      setError(`microphone unavailable — ${err.message}`);
+      setPhase('live');
+      return;
     }
+    const tick = setTimeout(() => setCount((c) => c - 1), 800);
+    return () => clearTimeout(tick);
+  }, [phase, count, stream]);
+
+  useEffect(() => {
+    if (phase !== 'live') return;
+    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [phase]);
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (phase === 'live') recorderRef.current?.stop();
+      else if (phase !== 'review') {
+        killStream();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [phase, onClose]);
+
+  const again = () => {
+    killStream();
+    setElapsed(0);
+    setCount(3);
+    setPreviewUrl(null);
+    setBounds(null);
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then(setStream)
+      .catch((err) => setError(`microphone unavailable — ${err.message}`));
+    setPhase('countdown');
   };
 
   const save = async () => {
-    if (await saveRecording(slug, key, blobRef.current)) {
-      setHasSaved(true);
-      setPhase('idle');
-      setPreviewUrl(null);
-      setVersion((v) => v + 1);
+    setPhase('saving');
+    const trim = bounds && !bounds.silent ? { t0: bounds.t0, t1: bounds.t1 } : null;
+    if (await saveRecording(slug, key, blobRef.current, trim)) {
+      killStream();
       onChange();
+      onClose();
     } else {
       setError('save failed — see terminal');
+      setPhase('review');
     }
   };
 
+  const trimmed = bounds && !bounds.silent ? bounds.duration - (bounds.t1 - bounds.t0) : 0;
+
   return (
-    <div className="record-panel comment-panel">
-      <div className="comment-head">
-        <span className="comment-excerpt">
-          read aloud: “{el.textContent.trim().slice(0, 90)}…”
-        </span>
-        <button type="button" aria-label="Close" onClick={onClose}>
-          <X size={16} />
-        </button>
+    <div className="rec-overlay">
+      <div className="rec-modal">
+        {error && (
+          <>
+            <p className="record-error">{error}</p>
+            <button type="button" className="shell-btn" onClick={onClose}>
+              close
+            </button>
+          </>
+        )}
+        {!error && phase === 'countdown' && (
+          <>
+            <p className="rec-hint">
+              read aloud: “{el.textContent.trim().slice(0, 110)}…”
+            </p>
+            <span className="rec-count">{stream ? count || '●' : '…'}</span>
+            <p className="rec-hint">esc to cancel</p>
+          </>
+        )}
+        {!error && phase === 'live' && stream && (
+          <>
+            <p className="rec-hint">
+              reading: “{el.textContent.trim().slice(0, 110)}…”
+            </p>
+            <Waveform stream={stream} />
+            <div className="record-row">
+              <span className="rec-elapsed">{elapsed}s</span>
+              <button
+                type="button"
+                className="shell-btn primary rec-live"
+                onClick={() => recorderRef.current?.stop()}
+              >
+                <Square size={12} /> stop
+              </button>
+            </div>
+          </>
+        )}
+        {!error && (phase === 'review' || phase === 'saving') && (
+          <>
+            <p className="rec-hint">the take — you have to hear it once:</p>
+            <audio controls src={previewUrl} />
+            {bounds?.silent && <p className="record-error">that take sounds silent</p>}
+            {trimmed > 0.2 && (
+              <p className="rec-hint">
+                will trim {trimmed.toFixed(1)}s of silence (keeping {bounds.t0.toFixed(1)}s →{' '}
+                {bounds.t1.toFixed(1)}s)
+              </p>
+            )}
+            <div className="record-row">
+              <button
+                type="button"
+                className="shell-btn primary"
+                disabled={phase === 'saving'}
+                onClick={save}
+              >
+                <Check size={12} /> {phase === 'saving' ? 'saving…' : 'keep it'}
+              </button>
+              <button type="button" className="shell-btn" onClick={again}>
+                <RotateCcw size={12} /> again
+              </button>
+              <button
+                type="button"
+                className="shell-btn"
+                onClick={() => {
+                  killStream();
+                  onClose();
+                }}
+              >
+                <Trash2 size={12} /> discard
+              </button>
+            </div>
+          </>
+        )}
       </div>
-      {error && <span className="record-error">{error}</span>}
-      {phase === 'idle' && hasSaved && (
-        <>
-          <audio controls src={`${audioUrl(slug, key)}?v=${version}`} />
-          <div className="record-row">
-            <button type="button" className="shell-btn" onClick={start}>
-              <RotateCcw size={12} /> re-record
-            </button>
-            <button
-              type="button"
-              className="shell-btn"
-              onClick={async () => {
-                await deleteRecording(slug, key);
-                setHasSaved(false);
-                onChange();
-              }}
-            >
-              <Trash2 size={12} /> delete
-            </button>
-          </div>
-        </>
-      )}
-      {phase === 'idle' && !hasSaved && (
-        <button type="button" className="shell-btn primary" onClick={start}>
-          <Mic size={12} /> record this section
-        </button>
-      )}
-      {phase === 'recording' && (
-        <button
-          type="button"
-          className="shell-btn primary rec-live"
-          onClick={() => recorderRef.current?.stop()}
-        >
-          <Square size={12} /> stop
-        </button>
-      )}
-      {phase === 'preview' && (
-        <>
-          <audio controls src={previewUrl} />
-          <div className="record-row">
-            <button type="button" className="shell-btn primary" onClick={save}>
-              <Check size={12} /> keep it
-            </button>
-            <button type="button" className="shell-btn" onClick={start}>
-              <RotateCcw size={12} /> again
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }

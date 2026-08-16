@@ -51,9 +51,13 @@ pnpm dev
   Refs round-trip through inline edits; you can even type a new `[^ref]` into a
   paragraph and add its definition in the file.
 - **🎙 Narration (no mode — it's ambient)** — you're forced to hear your own
-  prose. Hover any unrecorded paragraph, list, quote, or margin note (code
-  blocks and headings are exempt) and a mic appears in the margin; record
-  yourself reading it, with a mandatory listen before saving. Recorded
+  prose. Hover any paragraph, list, quote, or margin note (code blocks and
+  headings are exempt) and a mic appears in the margin; a flashing 3-second
+  countdown (Escape cancels) drops you into a live take with a floating
+  waveform of your voice, then an explicit keep/again/discard decision — you
+  hear the take before it exists. Leading and trailing silence is measured on
+  save and stored as trim bounds beside the file, honored by playback and the
+  word sweep, with the take itself kept lossless. Recorded
   sections carry a subtle ▶ that plays *from there onward* through every
   narrated section, with an estimated word-follow highlight (audio time
   spread across words by character count). Recordings key on the section's
