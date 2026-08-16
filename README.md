@@ -49,6 +49,15 @@ word to its moment, so playback highlights the word being spoken and skips
 your pauses. Rewrite a sentence and its audio goes stale until you read it
 again. Readers get a ▶ that plays from any section onward.
 
+**🔊 Synthetic voice** — sections you haven't read yet can be filled by a
+local TTS model ([Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M),
+Apache-2.0, ~92 MB), rendered once on your machine from the Voice panel —
+which shows what your hardware can run, and the model's size, engine, and
+license *before* anything downloads. Synthetic takes are visibly marked, never
+count as your reading, and are replaced the moment you record the section
+yourself. Emoji are spoken sensibly or skipped. The full model landscape we
+evaluated lives in [docs/tts-models.md](docs/tts-models.md).
+
 **✍ Provenance** — proof of care, measured. Sessions, days, active time
 (idle tabs count nothing), edits landed, words moved, and typed-vs-pasted
 keystrokes — pasting a wall of generated prose leaves a visible signature.

@@ -292,12 +292,18 @@ export function NarrationRail({ slug }) {
               {unit.recorded && (
                 <button
                   type="button"
-                  className={`rail-btn${playing === unit.key ? ' playing' : ''}`}
+                  className={`rail-btn${playing === unit.key ? ' playing' : ''}${unit.meta?.tts ? ' synthetic' : ''}`}
                   style={{ top: unit.top, left: unit.left }}
                   aria-label={
                     playing === unit.key ? 'Pause narration' : 'Play narration from this section'
                   }
-                  title={playing === unit.key ? 'Pause' : 'Listen from here'}
+                  title={
+                    unit.meta?.tts
+                      ? `Synthetic voice (${unit.meta.tts.model}, ${unit.meta.tts.voice}) — the author hasn't read this section yet`
+                      : playing === unit.key
+                        ? 'Pause'
+                        : 'Listen from here — the author’s voice'
+                  }
                   onClick={() => playFrom(unit.key)}
                 >
                   {playing === unit.key ? <Pause size={12} /> : <Play size={12} />}

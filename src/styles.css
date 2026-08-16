@@ -310,6 +310,77 @@ th {
   color: var(--paper);
 }
 
+/* Synthetic narration is always visually distinct from the author's voice. */
+.rail-btn.synthetic {
+  border-style: dashed;
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.rail-btn.synthetic.playing {
+  background: var(--warning);
+  color: var(--paper);
+}
+
+/* --- voice panel --- */
+
+.voice-probe {
+  margin: 0;
+  color: var(--muted);
+  font: 0.76rem/1.5 var(--sans);
+}
+
+.voice-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.8rem;
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.voice-facts dt {
+  color: var(--muted);
+  font: 700 0.62rem/1.6 var(--sans);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.voice-facts dd {
+  margin: 0;
+  font: 600 0.78rem/1.5 var(--sans);
+}
+
+.voice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: var(--muted);
+  font: 700 0.68rem/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.voice-row select {
+  flex: 1;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--accent);
+  font: 600 0.78rem/1.2 var(--sans);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.voice-status {
+  margin: 0;
+  color: var(--accent-2);
+  font: 600 0.76rem/1.4 var(--sans);
+}
+
 /* Playback highlight: the section being narrated, and the estimated
    current word. */
 .narrating {

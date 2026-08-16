@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   Copy,
   Download,
   FileText,
@@ -27,6 +28,7 @@ import {
 import { beginEdit, splice } from './editor-core.js';
 import { flags } from './flags.js';
 import { analyzeAll } from './heat.js';
+import { VoicePanel } from './voice.jsx';
 
 const OWN_UI =
   '.editor-shell, .block-toolbar, .comment-panel, .comment-sidebar, .heat-panel, .record-panel, .narration-layer, .ring-wrap, .topbar';
@@ -58,6 +60,7 @@ export function Shell({ slug }) {
   const [commentEl, setCommentEl] = useState(null);
   const [heatMap, setHeatMap] = useState(null);
   const [grade, setGrade] = useState(() => loadGrade(slug));
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [tick, setTick] = useState(0);
 
   const switchMode = (next) => {
@@ -243,6 +246,7 @@ export function Shell({ slug }) {
           onChange={() => setTick((t) => t + 1)}
         />
       )}
+      {voiceOpen && canEdit && <VoicePanel slug={slug} onClose={() => setVoiceOpen(false)} />}
       <div className="editor-shell">
         {status && <span className="editor-status">{status}</span>}
         {mode === 'comment' && (
@@ -272,6 +276,11 @@ export function Shell({ slug }) {
               ))}
             </select>
           </label>
+        )}
+        {canEdit && (
+          <button type="button" className="shell-btn" onClick={() => setVoiceOpen((v) => !v)}>
+            <AudioLines size={12} /> Voice
+          </button>
         )}
         {flags.heat && (
           <button type="button" className="shell-btn" onClick={() => switchMode('heat')}>

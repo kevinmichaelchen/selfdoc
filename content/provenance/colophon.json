@@ -1,6 +1,6 @@
 {
-  "sessions": 2,
-  "readingMs": 40000,
+  "sessions": 3,
+  "readingMs": 45000,
   "editingMs": 0,
   "edits": 0,
   "typedChars": 0,
@@ -10,5 +10,5 @@
   "days": 1,
   "lastDay": "2026-08-16",
   "firstSeen": "2026-08-16T02:43:50.032Z",
-  "lastSeen": "2026-08-16T02:44:46.891Z"
+  "lastSeen": "2026-08-16T02:57:02.886Z"
 }

@@ -1,0 +1,26 @@
+{
+  "1ij1d1r": {
+    "t0": 0.22,
+    "t1": 19.78,
+    "tts": {
+      "model": "Kokoro-82M",
+      "voice": "af_heart"
+    }
+  },
+  "uxztqp": {
+    "t0": 0.26,
+    "t1": 12.65,
+    "tts": {
+      "model": "Kokoro-82M",
+      "voice": "af_heart"
+    }
+  },
+  "cby6ae": {
+    "t0": 0.22,
+    "t1": 16.41,
+    "tts": {
+      "model": "Kokoro-82M",
+      "voice": "af_heart"
+    }
+  }
+}

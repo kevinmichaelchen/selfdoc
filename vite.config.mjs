@@ -351,7 +351,7 @@ function selfServe() {
         if (req.method === 'PUT') {
           return readBody(req, (body) => {
             try {
-              const { words, skips } = JSON.parse(body.toString('utf8'));
+              const { words, skips, tts } = JSON.parse(body.toString('utf8'));
               const patch = {};
               if (
                 Array.isArray(words) &&
@@ -369,6 +369,9 @@ function selfServe() {
                 )
               ) {
                 patch.skips = skips;
+              }
+              if (tts && typeof tts.model === 'string' && typeof tts.voice === 'string') {
+                patch.tts = { model: tts.model.slice(0, 64), voice: tts.voice.slice(0, 64) };
               }
               if (!Object.keys(patch).length) {
                 res.statusCode = 400;
