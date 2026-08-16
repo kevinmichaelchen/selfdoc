@@ -1,15 +1,28 @@
 # selfdoc
 
-A document that edits itself.
+**A document that edits itself.**
+
+Click a paragraph. Type. Click away. Your edit is converted back to markdown
+and spliced into the `.mdx` source file at the exact character range that
+paragraph came from.
+
+No CMS. No database. No admin panel. `git diff` is the audit log.
 
 ![Edit mode: click a paragraph and type](docs/edit-mode.webp)
 
-Content lives in MDX files. The rendered page — typography, callouts, stat
-rows, margin notes, whatever components you add — doubles as the editor: toggle
-edit mode, click any paragraph, type, click away. The edit is converted back to
-markdown and spliced into the `.mdx` source at the exact character range the
-block came from. No database, no CMS, no admin panel. `git diff` is the audit
-log.
+## The trick
+
+Every markdown compiler knows where each block lives in the source file, down
+to the character — and then throws that away. We keep it.
+
+1. A tiny plugin stamps each rendered block with its source range.
+2. Clicking a block makes it editable in place.
+3. On blur, the HTML converts back to markdown and splices into the file at
+   that exact range.
+
+Everything else falls out of that loop. Adding a paragraph? A splice with an
+empty range. Deleting one? A splice with an empty replacement. The hover
+toolbar is just those splices with buttons on.
 
 ## Run it
 
@@ -18,147 +31,78 @@ pnpm install
 pnpm dev
 ```
 
-- **✏️ Edit** (bottom right, dev only) — click a block to rewrite it; hover a
-  block for the toolbar: **+ ¶** add paragraph, **+ note** add margin note,
-  **✕** delete (components too).
-- **💬 Comment** — feedback at every zoom level: click a block to annotate it;
-  select a phrase first to annotate exactly those words (highlighted amber);
-  click a heading for section-level notes; the **whole doc** button for global
-  ones. Plus one-tap reactions (😕 lost me · 📝 needs margin note · 👏 kudos)
-  and an overall grade. A Google-Docs-style sidebar lists every annotation in
-  document order — click one to jump to it — and exports them all as JSON
-  (copy or download), each annotation paired with the text it targets, ready
-  to feed to an agent. Reader-state in localStorage; never touches the file.
-- **🌡 Heat** — derived writing lint: long blocks, run-on sentences, dense
-  vocabulary, low Flesch scores, em-dash pileups, filler words. Hover a
-  highlighted block for its signals. Stored nowhere. *Currently behind a
-  feature flag while it gets rethought:*
-  `localStorage.setItem('selfdoc-flag-heat', '1')` to enable.
-- **✍ Provenance** (topbar stamp) — the document's watermark, measured not
-  asserted: sessions and distinct days, active time (heartbeats only count
-  with real input in the last 30s — idle tabs accrue nothing), edit-mode
-  time, edits landed, words added/removed (computed server-side from each
-  splice), and typed vs pasted characters (paste events are tallied
-  separately — bulk-pasting generated prose shows up as exactly that).
-  Accrues across drafts in `content/provenance/<doc>.json` beside the source,
-  baked into the export for readers.
-- **⧉ Copy md** (topbar) — one click copies the document's raw markdown
-  source, so readers can hand the whole post to their agents.
-- **Progress ring** (bottom left) — reading progress; click it for a table of
-  contents with per-section reading times. A `<Toc />` component renders the
-  same thing inline.
-- **Citations** — standard markdown footnotes (`[^id]`), rendered as endnotes.
-  Refs round-trip through inline edits; you can even type a new `[^ref]` into a
-  paragraph and add its definition in the file.
-- **🎙 Narration (no mode — it's ambient)** — you're forced to hear your own
-  prose. Hover any paragraph, list, quote, or margin note (code blocks and
-  headings are exempt) and a mic appears in the margin; a flashing 3-second
-  countdown (Escape cancels) drops you into a live take with a floating
-  waveform of your voice, then an explicit keep/again/discard decision — you
-  hear the take before it exists. Leading and trailing silence is measured on
-  save and stored as trim bounds beside the file, honored by playback and the
-  word sweep, with the take itself kept lossless. After saving, a small speech
-  model (whisper-tiny via Transformers.js — author's machine only, dev-only,
-  one-time ~45 MB download) aligns per-word timestamps onto the prose and
-  turns long pauses and caught fillers into skip ranges; playback highlights
-  the actual word being spoken and jumps the dead air. Readers and exports
-  consume plain timestamps — no model ever ships. Recorded
-  sections carry a subtle ▶ that plays *from there onward* through every
-  narrated section, with an estimated word-follow highlight (audio time
-  spread across words by character count). Recordings key on the section's
-  content hash: rewrite the prose and its audio goes stale — but revert the
-  prose and the recording revives, which is why stale audio is only deleted
-  via the topbar 🎙 chip's explicit purge. Coverage nags from that chip until
-  everything is read. Audio lives in `content/audio/<doc>/`, beside the
-  source.
-- **Multiple docs** — every `content/*.mdx` gets a card on the home page
-  (the bare URL); the topbar brand takes you back home.
+Write in `content/*.mdx`. Every doc gets a card on the home page.
 
-## Share it
+## What's inside
 
-The **⇩ export** dropdown in the topbar (dev only) builds and downloads the
-current doc: plain HTML by default, or HTML + narration — which refuses to
-build until every section is recorded. Same thing from the CLI:
+**✏️ Edit** — prose is editable in the page: paragraphs, headings, lists,
+quotes, even text inside components. Bold, links, code, and citations survive
+the round trip.
+
+**🎙 Narration** — you're forced to hear your own prose. Hover a section, hit
+the mic, and a 3-second countdown drops you into a live take with a waveform
+of your voice — then you listen back before keeping it. Silence is trimmed
+automatically. A small speech model (on your machine, dev only) pins every
+word to its moment, so playback highlights the word being spoken and skips
+your pauses. Rewrite a sentence and its audio goes stale until you read it
+again. Readers get a ▶ that plays from any section onward.
+
+**✍ Provenance** — proof of care, measured. Sessions, days, active time
+(idle tabs count nothing), edits landed, words moved, and typed-vs-pasted
+keystrokes — pasting a wall of generated prose leaves a visible signature.
+Stored in git beside the source; ships with every export.
+
+**💬 Comments** — feedback at any zoom: a phrase (select it first), a block,
+a section, or the whole doc. Reactions, grades, and a sidebar listing
+everything in document order. One click exports it all as JSON — with the
+text each comment targets — ready to hand to an agent. Lives in the reader's
+browser, never in the file.
+
+**⧉ Copy as markdown** — the whole source, one click, straight to your
+agent's context window.
+
+Plus the quiet stuff: a table of contents with per-section read times, a
+reading-progress ring, Tufte-style margin notes, footnote citations, and a
+🌡 writing-lint mode (parked behind a flag while we rethink it).
+
+## Ship it
 
 ```sh
-pnpm export                        # dist/building-selfdoc.html (default doc, no audio)
-DOC=colophon pnpm export           # dist/colophon.html
-AUDIO=1 pnpm export                # narration inlined as data URLs (bigger file)
+pnpm export                # one self-contained HTML file
+DOC=colophon pnpm export   # any doc by name
+AUDIO=1 pnpm export        # narration inlined (topbar dropdown does this too)
 ```
 
-Exports are per-document: one self-contained HTML file that works from
-`file://`, carrying only that doc — other drafts (and their provenance and
-audio) stay out of the bundle. Reading chrome, commenting, heat, provenance,
-and (opted-in) narration ship; editing is dev-only and excluded.
+Exports carry only that doc — other drafts stay out of the bundle. Works from
+`file://`. Editing never ships. Pushes to `main` deploy the whole site to
+GitHub Pages, narration included.
 
-## Deploy it
+## The rules that keep it sane
 
-Pushes to `main` deploy the full multi-doc site to GitHub Pages via
-`.github/workflows/deploy.yml` (assets are relative-pathed, so the project
-subpath just works; narration is served as static files under `audio/`).
-Committed provenance means every deploy carries current proof-of-care.
+| What | Lives in | Because |
+| --- | --- | --- |
+| Prose | the page | editing where you read |
+| Structure & props | the `.mdx` file | structure belongs in source |
+| Reader feedback | the reader's browser | marginalia isn't the document |
+| Provenance & audio | git, beside the source | proof should travel |
+| TOC, read times, heat | derived at render | can never drift from the source |
 
-## How it works
+One rule above all: **nothing gets a second home.** The file is the document;
+everything else is derived from it or deliberately kept out of it.
 
-1. **`plugins/rehype-source-pos.mjs`** — the markdown compiler already knows
-   the character offsets of every block in the source file. This rehype plugin
-   stamps them onto prose blocks as `data-edit-start`/`end` (text-editable) and
-   onto JSX components as `data-node-start`/`end` (removable as a unit; their
-   prose children stay editable). Nested blocks are skipped so ranges never
-   overlap; the generated endnotes section is skipped because HTML→markdown
-   has no footnote syntax to round-trip through.
-2. **`src/editor-core.js`** — clicking a stamped block makes it
-   `contentEditable`. On blur, [turndown](https://github.com/mixmark-io/turndown)
-   converts the edited HTML back to markdown (custom rule so citation refs
-   come back as `[^id]`; `{` and `<` escaped outside code so a stray brace
-   can't break the MDX compile) and POSTs it with the block's range.
-   Insertion is the same splice with `start == end`.
-3. **`vite.config.mjs`** — a dev-only middleware (`/__save`) splices the
-   replacement into the file at that range, allowlisted to `content/*.mdx`,
-   and bumps the doc's provenance edit count server-side. A sibling endpoint
-   (`/__provenance`) receives time heartbeats from `src/provenance.js` and
-   merges them into the JSON sidecar; builds bake the sidecars in via
-   `define`.
+## Honest limits
 
-The reading chrome (`src/chrome.jsx`) and heat signals (`src/heat.js`) are
-derived from the rendered DOM after mount — never stored, so they can't
-conflict with editing. Annotations (`src/comments.js`) anchor to a hash of
-each block's text: stable across edits elsewhere, orphaned if the block itself
-is rewritten.
+Component props aren't inline-editable yet, tables and endnotes are
+file-edited, rewriting a block orphans its comments and audio (reverting
+revives them), and feedback is single-reader until the sync server exists.
+All tracked in [ROADMAP.md](ROADMAP.md), along with the gated local-model
+reading assistant.
 
-## The boundary that makes it sane
+## Standing on
 
-- **Prose** (paragraphs, headings, lists, quotes) → edit in the page.
-- **Structure** (components, their props, document order beyond
-  add/delete-after) → edit in the MDX file, where structure belongs.
-- **Reader state** (comments, reactions, grades) → localStorage, never the
-  file.
-- **Authorial provenance** → measured, not asserted; a JSON sidecar beside the
-  source.
-
-## Known limits
-
-- Component props (a stat's `value`, a callout's `title`) aren't inline-editable
-  yet (see ROADMAP).
-- Tables and the endnotes section render but are file-edited — their
-  HTML→markdown conversion isn't trustworthy enough to write back.
-- Round-tripping normalizes formatting: source line-wrapping collapses to one
-  line per paragraph on first edit; exotic pasted HTML becomes whatever
-  turndown makes of it.
-- Annotations on a block are orphaned if that block's text is rewritten.
-- Reactions and grades are single-reader until the feedback server exists
-  (see ROADMAP).
-
-See [ROADMAP.md](ROADMAP.md) for what's logged but deliberately not built:
-revision compare (draft vs canonical), reader feedback sync, and the
-read-only local-model assistant.
-
-## Prior art
-
-- **TiddlyWiki** — the original "quine" wiki: a single HTML file that edits and
-  re-saves itself. Spiritual ancestor.
-- **TinaCMS** — the productized version of this idea (visual MDX editing,
-  git-backed). The off-ramp if this pattern needs multi-user editing.
-- **Tufte CSS** — the margin-note tradition the `<Note>` component borrows.
-- **Obsidian / Typora** — live-preview markdown editors; same instinct,
-  different direction (editor that renders vs. render that edits).
+- **TiddlyWiki** — proved a document can be its own editor, twenty years ago.
+- **MDX + remark** — whose source positions are the load-bearing fact here.
+- **turndown** — the way back from HTML to markdown.
+- **Tufte** — the margin notes.
+- **TinaCMS** — the productized cousin, and the off-ramp if this ever needs
+  multi-user editing.
