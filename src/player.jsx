@@ -33,7 +33,15 @@ export function NarrationRail({ slug }) {
   const [playing, setPlaying] = useState(null);
   const [recordEl, setRecordEl] = useState(null);
   const [alignMsg, setAlignMsg] = useState('');
-  const audioRef = useRef(null);
+  // Playback runs on Web Audio, not <audio>: MediaRecorder webm carries no
+  // duration header, so element seeking (trim, skips) stutters and its
+  // duration reads Infinity. Decoding gives exact lengths and lets trim and
+  // skip ranges become precise scheduling instead of seeks.
+  const audioCtxRef = useRef(null);
+  const bufferCacheRef = useRef(new Map());
+  const sourcesRef = useRef([]);
+  const rafRef = useRef(0);
+  const playTokenRef = useRef(0);
   const sweepRef = useRef(null);
 
   // Alignment progress toast (model download, transcription, result).
@@ -53,6 +61,7 @@ export function NarrationRail({ slug }) {
   }, [canRecord]);
 
   const refresh = useCallback(() => {
+    bufferCacheRef.current.clear(); // takes may have been re-recorded
     const els = audioUnits();
     listAudio(slug).then((recorded) => {
       setUnits(
@@ -93,7 +102,16 @@ export function NarrationRail({ slug }) {
   };
 
   const stopPlayback = useCallback(() => {
-    audioRef.current?.pause();
+    playTokenRef.current++;
+    cancelAnimationFrame(rafRef.current);
+    sourcesRef.current.forEach((src) => {
+      try {
+        src.stop();
+      } catch {
+        // already ended
+      }
+    });
+    sourcesRef.current = [];
     clearSweep();
     setPlaying(null);
   }, []);
@@ -127,20 +145,17 @@ export function NarrationRail({ slug }) {
     el.classList.add('narrating');
   };
 
-  const onTimeUpdate = (player, meta) => {
+  const updateSweep = (clipTime, meta, t0, t1) => {
     const sweep = sweepRef.current;
-    if (!sweep || !player.duration || !sweep.total) return;
+    if (!sweep || !sweep.total) return;
     let index;
     if (meta?.words?.length === sweep.spans.length) {
       // Model-aligned timing: the word whose timestamp we've passed.
-      const t = player.currentTime;
-      index = meta.words.findLastIndex((start) => start <= t);
+      index = meta.words.findLastIndex((start) => start <= clipTime);
       if (index === -1) index = 0;
     } else {
-      // Estimate: clip time spread across words by character count.
-      const t0 = meta?.t0 ?? 0;
-      const t1 = meta?.t1 ?? player.duration;
-      const progress = Math.min(1, Math.max(0, (player.currentTime - t0) / (t1 - t0 || 1)));
+      // Estimate: speech time spread across words by character count.
+      const progress = Math.min(1, Math.max(0, (clipTime - t0) / (t1 - t0 || 1)));
       index = sweep.cums.findIndex((cum) => cum >= progress * sweep.total);
       if (index === -1) return;
     }
@@ -155,45 +170,85 @@ export function NarrationRail({ slug }) {
       stopPlayback();
       return;
     }
+    stopPlayback();
     const narrated = units.filter((unit) => unit.recorded);
     const start = narrated.findIndex((unit) => unit.key === key);
     if (start < 0) return;
-    audioRef.current ??= new Audio();
-    const player = audioRef.current;
-    const playIndex = (i) => {
+    const token = ++playTokenRef.current;
+    const ctx = (audioCtxRef.current ??= new AudioContext());
+    ctx.resume();
+
+    const playSection = async (i) => {
+      if (playTokenRef.current !== token) return;
       if (i >= narrated.length) {
         stopPlayback();
         return;
       }
       const unit = narrated[i];
+      let buffer = bufferCacheRef.current.get(unit.key);
+      if (!buffer) {
+        try {
+          const res = await fetch(audioUrl(slug, unit.key));
+          buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+        } catch {
+          playSection(i + 1);
+          return;
+        }
+        bufferCacheRef.current.set(unit.key, buffer);
+      }
+      if (playTokenRef.current !== token) return;
+
       const meta = unit.meta;
-      const advance = () => playIndex(i + 1);
-      player.src = audioUrl(slug, unit.key);
-      player.onloadedmetadata = () => {
-        if (meta?.t0) player.currentTime = meta.t0;
-      };
-      player.onended = advance;
-      player.ontimeupdate = () => {
-        if (meta?.t1 && player.currentTime >= meta.t1) {
-          player.pause();
-          advance();
-          return;
-        }
-        // Jump the dead air and cut fillers the model found.
-        const skip = meta?.skips?.find(
-          ([s, e]) => player.currentTime >= s && player.currentTime < e - 0.05,
-        );
-        if (skip) {
-          player.currentTime = skip[1];
-          return;
-        }
-        onTimeUpdate(player, meta);
-      };
+      const t0 = Math.min(meta?.t0 ?? 0, buffer.duration);
+      const t1 = Math.min(meta?.t1 ?? buffer.duration, buffer.duration);
+      // The speech segments: [t0, t1] minus the skip ranges.
+      const skips = (meta?.skips ?? [])
+        .map(([s, e]) => [Math.max(s, t0), Math.min(e, t1)])
+        .filter(([s, e]) => e > s)
+        .sort((a, b) => a[0] - b[0]);
+      const segments = [];
+      let cursor = t0;
+      for (const [s, e] of skips) {
+        if (s > cursor) segments.push([cursor, s]);
+        cursor = Math.max(cursor, e);
+      }
+      if (t1 > cursor) segments.push([cursor, t1]);
+      if (!segments.length) {
+        playSection(i + 1);
+        return;
+      }
+
       beginSweep(unit.el);
       setPlaying(unit.key);
-      player.play();
+      let when = ctx.currentTime + 0.08;
+      const timeline = [];
+      segments.forEach(([s, e]) => {
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        src.start(when, s, e - s);
+        sourcesRef.current.push(src);
+        timeline.push({ at: when, from: s, len: e - s });
+        when += e - s;
+      });
+      const endAt = when;
+
+      const tick = () => {
+        if (playTokenRef.current !== token) return;
+        const now = ctx.currentTime;
+        if (now >= endAt) {
+          clearSweep();
+          sourcesRef.current = [];
+          playSection(i + 1);
+          return;
+        }
+        const seg = timeline.find((t) => now >= t.at && now < t.at + t.len);
+        if (seg) updateSweep(seg.from + (now - seg.at), meta, t0, t1);
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
     };
-    playIndex(start);
+    playSection(start);
   };
 
   return (
