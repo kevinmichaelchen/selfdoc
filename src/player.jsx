@@ -310,6 +310,8 @@ function RecordFlow({ slug, el, onClose, onChange }) {
 
   useEffect(() => {
     el.classList.add('comment-target');
+    // The whole point is reading the section — keep it in view, above the dock.
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return () => {
       el.classList.remove('comment-target');
       killStream();
@@ -409,80 +411,75 @@ function RecordFlow({ slug, el, onClose, onChange }) {
   const trimmed = bounds && !bounds.silent ? bounds.duration - (bounds.t1 - bounds.t0) : 0;
 
   return (
-    <div className="rec-overlay">
-      <div className="rec-modal">
-        {error && (
-          <>
-            <p className="record-error">{error}</p>
-            <button type="button" className="shell-btn" onClick={onClose}>
-              close
+    <div className="rec-dock rec-overlay">
+      {error && (
+        <>
+          <p className="record-error">{error}</p>
+          <button type="button" className="shell-btn" onClick={onClose}>
+            close
+          </button>
+        </>
+      )}
+      {!error && phase === 'countdown' && (
+        <div className="rec-row-wide">
+          <span className="rec-count">{stream ? count || '●' : '…'}</span>
+          <p className="rec-hint">
+            get ready to read the highlighted section — esc cancels
+          </p>
+        </div>
+      )}
+      {!error && phase === 'live' && stream && (
+        <>
+          <p className="rec-hint">read the highlighted section</p>
+          <Waveform stream={stream} />
+          <div className="record-row">
+            <span className="rec-elapsed">{elapsed}s</span>
+            <button
+              type="button"
+              className="shell-btn primary rec-live"
+              onClick={() => recorderRef.current?.stop()}
+            >
+              <Square size={12} /> stop
             </button>
-          </>
-        )}
-        {!error && phase === 'countdown' && (
-          <>
+          </div>
+        </>
+      )}
+      {!error && (phase === 'review' || phase === 'saving') && (
+        <>
+          <p className="rec-hint">the take — you have to hear it once:</p>
+          <audio controls src={previewUrl} />
+          {bounds?.silent && <p className="record-error">that take sounds silent</p>}
+          {trimmed > 0.2 && (
             <p className="rec-hint">
-              read aloud: “{el.textContent.trim().slice(0, 110)}…”
+              will trim {trimmed.toFixed(1)}s of silence (keeping {bounds.t0.toFixed(1)}s →{' '}
+              {bounds.t1.toFixed(1)}s)
             </p>
-            <span className="rec-count">{stream ? count || '●' : '…'}</span>
-            <p className="rec-hint">esc to cancel</p>
-          </>
-        )}
-        {!error && phase === 'live' && stream && (
-          <>
-            <p className="rec-hint">
-              reading: “{el.textContent.trim().slice(0, 110)}…”
-            </p>
-            <Waveform stream={stream} />
-            <div className="record-row">
-              <span className="rec-elapsed">{elapsed}s</span>
-              <button
-                type="button"
-                className="shell-btn primary rec-live"
-                onClick={() => recorderRef.current?.stop()}
-              >
-                <Square size={12} /> stop
-              </button>
-            </div>
-          </>
-        )}
-        {!error && (phase === 'review' || phase === 'saving') && (
-          <>
-            <p className="rec-hint">the take — you have to hear it once:</p>
-            <audio controls src={previewUrl} />
-            {bounds?.silent && <p className="record-error">that take sounds silent</p>}
-            {trimmed > 0.2 && (
-              <p className="rec-hint">
-                will trim {trimmed.toFixed(1)}s of silence (keeping {bounds.t0.toFixed(1)}s →{' '}
-                {bounds.t1.toFixed(1)}s)
-              </p>
-            )}
-            <div className="record-row">
-              <button
-                type="button"
-                className="shell-btn primary"
-                disabled={phase === 'saving'}
-                onClick={save}
-              >
-                <Check size={12} /> {phase === 'saving' ? 'saving…' : 'keep it'}
-              </button>
-              <button type="button" className="shell-btn" onClick={again}>
-                <RotateCcw size={12} /> again
-              </button>
-              <button
-                type="button"
-                className="shell-btn"
-                onClick={() => {
-                  killStream();
-                  onClose();
-                }}
-              >
-                <Trash2 size={12} /> discard
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+          )}
+          <div className="record-row">
+            <button
+              type="button"
+              className="shell-btn primary"
+              disabled={phase === 'saving'}
+              onClick={save}
+            >
+              <Check size={12} /> {phase === 'saving' ? 'saving…' : 'keep it'}
+            </button>
+            <button type="button" className="shell-btn" onClick={again}>
+              <RotateCcw size={12} /> again
+            </button>
+            <button
+              type="button"
+              className="shell-btn"
+              onClick={() => {
+                killStream();
+                onClose();
+              }}
+            >
+              <Trash2 size={12} /> discard
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
