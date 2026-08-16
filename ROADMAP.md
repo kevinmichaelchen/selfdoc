@@ -85,6 +85,21 @@ too — playback jumps them losslessly, no re-encoding. What remains:
 - Physically cutting audio (vs skip-on-playback) requires re-encoding —
   server-side ffmpeg in the dev middleware if ever needed.
 
+## Alignment robustness on real-mic takes — OPEN
+
+Observed 2026-08-16 on the author's first 13 real takes: whisper (tiny.en
+AND base.en) starts transcribing correctly, then degenerates into repetition
+loops ("the first movie of the first movie of…"), so the <50% match guard
+correctly rejects the timing and playback falls back to the estimate. Bounds
+and pause-skips are unaffected (RMS, no model). Not reproduced from clean
+synthesized speech at the old settings; a fresh fake-mic take at the new
+32 kbps + noise-suppression settings transcribed as near-silence (a
+different failure — likely the fake device, not the settings). Hypotheses to
+test, in order: (1) record one real take at a higher bitrate to rule out
+32 kbps opus as the trigger, (2) VAD-segmented transcription (feed whisper
+one speech segment at a time — repetition loops rarely survive short
+inputs), (3) CrisperWhisper, which is also the verbatim-filler upgrade.
+
 ## Word-accurate narration highlight — SHIPPED
 
 Shipped (2026-08-15): after each save, whisper-tiny.en (Transformers.js,
