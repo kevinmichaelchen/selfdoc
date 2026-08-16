@@ -11,6 +11,19 @@ reference audio on disk. Clone from the author's real takes so synthetic
 fill approximates their voice, still marked synthetic. Browser story is
 emerging; may need a small native/CLI step in the dev middleware.
 
+## Faster-than-realtime encode via WebCodecs
+
+The synthetic-voice encode phase is slow only because MediaRecorder encodes
+in real time (a 20 s section takes 20 s). `AudioEncoder` from WebCodecs
+encodes opus far faster than realtime, runs in a Web Worker, and is
+supported in Chrome/Edge, Firefox 130+ desktop, and Safari 26+ (16.4–18.7
+ship only the video half). Cost: WebCodecs emits raw opus packets, so we'd
+add a tiny muxer (e.g. webm-muxer) to produce the same webm container;
+keep the realtime MediaRecorder path as the fallback for older Safari.
+Same machinery enables a two-tier flow if we ever want it: save the
+high-quality take immediately (playable at once), compress in a background
+worker, then PUT the small version over it.
+
 ## Reader-side cloud rendering
 
 The Voice panel is author-side. A reader of the deployed site could
