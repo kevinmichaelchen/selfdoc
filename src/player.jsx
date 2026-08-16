@@ -18,6 +18,14 @@ import { ALIGN_STATUS, alignTake } from './audio-ai.js';
 
 const announceChange = () => window.dispatchEvent(new Event(AUDIO_CHANGED));
 
+// Voice, not music: mono, cleaned up, and 32 kbps opus — transparent for
+// speech at a quarter of MediaRecorder's default size, which matters because
+// narration travels inside single-file exports (base64, +33%).
+const MIC_CONSTRAINTS = {
+  audio: { channelCount: 1, noiseSuppression: true, echoCancellation: true },
+};
+const RECORDER_OPTIONS = { audioBitsPerSecond: 32_000 };
+
 /**
  * The narration rail: no mode, no button. Recorded sections carry a subtle
  * play control in the margin; playing continues section-to-section through
@@ -377,7 +385,7 @@ function RecordFlow({ slug, el, onClose, onChange }) {
   useEffect(() => {
     let cancelled = false;
     navigator.mediaDevices
-      .getUserMedia({ audio: true })
+      .getUserMedia(MIC_CONSTRAINTS)
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         setStream(s);
@@ -392,7 +400,7 @@ function RecordFlow({ slug, el, onClose, onChange }) {
   useEffect(() => {
     if (phase !== 'countdown' || !stream) return;
     if (count === 0) {
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream, RECORDER_OPTIONS);
       const chunks = [];
       recorder.ondataavailable = (event) => chunks.push(event.data);
       recorder.onstop = async () => {
@@ -441,7 +449,7 @@ function RecordFlow({ slug, el, onClose, onChange }) {
     setPreviewUrl(null);
     setBounds(null);
     navigator.mediaDevices
-      .getUserMedia({ audio: true })
+      .getUserMedia(MIC_CONSTRAINTS)
       .then(setStream)
       .catch((err) => setError(`microphone unavailable — ${err.message}`));
     setPhase('countdown');
