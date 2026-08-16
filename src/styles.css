@@ -232,6 +232,35 @@ th {
   text-transform: uppercase;
 }
 
+/* --- listen mode --- */
+
+.listen-pill {
+  position: fixed;
+  left: 5rem;
+  bottom: 1.55rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--paper);
+  font: 700 0.78rem/1 var(--sans);
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(23, 79, 70, 0.35);
+}
+
+.listen-pill:hover {
+  background: var(--accent-2);
+}
+
+.listen-pill.playing {
+  background: var(--warning);
+}
+
 /* --- narration rail --- */
 
 .narration-layer {

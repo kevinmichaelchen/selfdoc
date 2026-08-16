@@ -1,4 +1,4 @@
-import { Check, Mic, Pause, Play, RotateCcw, Square, Trash2 } from 'lucide-react';
+import { Check, Headphones, Mic, Pause, Play, RotateCcw, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AUDIO_CHANGED,
@@ -228,6 +228,8 @@ export function NarrationRail({ slug }) {
 
       beginSweep(unit.el);
       setPlaying(unit.key);
+      // Listening is hands-free: the page follows the voice.
+      unit.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       let when = ctx.currentTime + 0.08;
       const timeline = [];
       segments.forEach(([s, e]) => {
@@ -259,8 +261,29 @@ export function NarrationRail({ slug }) {
     playSection(start);
   };
 
+  const narrated = units.filter((unit) => unit.recorded);
+  // Total listen time: trimmed spans minus skipped dead air.
+  const listenSeconds = narrated.reduce((sum, unit) => {
+    const meta = unit.meta;
+    if (!meta?.t1) return sum + 20; // untrimmed legacy take: rough guess
+    const skipped = (meta.skips ?? []).reduce((n, [s, e]) => n + (e - s), 0);
+    return sum + (meta.t1 - (meta.t0 ?? 0)) - skipped;
+  }, 0);
+
   return (
     <>
+      {narrated.length > 0 && (
+        <button
+          type="button"
+          className={`listen-pill${playing ? ' playing' : ''}`}
+          onClick={() => (playing ? stopPlayback() : playFrom(narrated[0].key))}
+        >
+          {playing ? <Pause size={13} /> : <Headphones size={13} />}
+          {playing
+            ? `${narrated.findIndex((u) => u.key === playing) + 1}/${narrated.length}`
+            : `Listen · ${Math.max(1, Math.round(listenSeconds / 60))} min`}
+        </button>
+      )}
       <div className="narration-layer">
         {units.map((unit) => {
           const hovered = canRecord && hoverKey === unit.key;
