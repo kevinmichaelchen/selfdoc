@@ -31,7 +31,9 @@ pnpm dev
   to feed to an agent. Reader-state in localStorage; never touches the file.
 - **🌡 Heat** — derived writing lint: long blocks, run-on sentences, dense
   vocabulary, low Flesch scores, em-dash pileups, filler words. Hover a
-  highlighted block for its signals. Stored nowhere.
+  highlighted block for its signals. Stored nowhere. *Currently behind a
+  feature flag while it gets rethought:*
+  `localStorage.setItem('selfdoc-flag-heat', '1')` to enable.
 - **✍ Provenance** (topbar stamp) — the document's watermark, measured not
   asserted: sessions and distinct days, active time (heartbeats only count
   with real input in the last 30s — idle tabs accrue nothing), edit-mode
@@ -48,13 +50,17 @@ pnpm dev
 - **Citations** — standard markdown footnotes (`[^id]`), rendered as endnotes.
   Refs round-trip through inline edits; you can even type a new `[^ref]` into a
   paragraph and add its definition in the file.
-- **🎙 Read aloud** (dev only) — you're forced to hear your own prose: every
-  paragraph, list, quote, and margin note is a narration unit (code blocks and
-  headings are exempt) that you record yourself reading, one take at a time,
-  with a mandatory listen before saving. Recordings key on the section's
-  content hash — rewrite the prose and its audio is orphaned until you read
-  it again (an orphan purge button cleans up). Readers get a ▶ button beside
-  every narrated section. Audio lives in `content/audio/<doc>/`, beside the
+- **🎙 Narration (no mode — it's ambient)** — you're forced to hear your own
+  prose. Hover any unrecorded paragraph, list, quote, or margin note (code
+  blocks and headings are exempt) and a mic appears in the margin; record
+  yourself reading it, with a mandatory listen before saving. Recorded
+  sections carry a subtle ▶ that plays *from there onward* through every
+  narrated section, with an estimated word-follow highlight (audio time
+  spread across words by character count). Recordings key on the section's
+  content hash: rewrite the prose and its audio goes stale — but revert the
+  prose and the recording revives, which is why stale audio is only deleted
+  via the topbar 🎙 chip's explicit purge. Coverage nags from that chip until
+  everything is read. Audio lives in `content/audio/<doc>/`, beside the
   source.
 - **Multiple docs** — every `content/*.mdx` gets a card on the home page
   (the bare URL); the topbar brand takes you back home.

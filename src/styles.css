@@ -232,7 +232,7 @@ th {
   text-transform: uppercase;
 }
 
-/* --- narration (reader) --- */
+/* --- narration rail --- */
 
 .narration-layer {
   position: absolute;
@@ -240,50 +240,58 @@ th {
   left: 0;
 }
 
-.narration-btn {
+.rail-btn {
   position: absolute;
   z-index: 15;
+  display: grid;
+  place-items: center;
   width: 26px;
   height: 26px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 50%;
-  background: rgba(245, 241, 232, 0.95);
-  color: var(--accent);
-  font-size: 0.6rem;
+  background: rgba(245, 241, 232, 0.9);
+  color: var(--muted);
+  opacity: 0.55;
   cursor: pointer;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.narration-btn:hover {
+.rail-btn:hover {
+  opacity: 1;
   border-color: var(--accent-2);
   color: var(--accent-2);
 }
 
-.narration-btn.playing {
+.rail-btn.playing {
+  opacity: 1;
   border-color: var(--accent-2);
   background: var(--accent);
   color: var(--paper);
 }
 
-/* --- record mode --- */
-
-body.recording .audio-missing {
-  cursor: pointer;
-  box-shadow: inset 3px 0 0 var(--warning);
-  background: rgba(182, 93, 37, 0.07);
-  border-radius: 2px;
+.rail-btn.rail-record {
+  opacity: 0.9;
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
-body.recording .audio-done {
-  cursor: pointer;
-  box-shadow: inset 3px 0 0 var(--accent-2);
-  background: rgba(36, 111, 97, 0.07);
-  border-radius: 2px;
+.rail-btn.rail-record:hover {
+  background: var(--warning);
+  color: var(--paper);
 }
 
-body.recording .audio-missing:hover,
-body.recording .audio-done:hover {
-  box-shadow: inset 3px 0 0 var(--accent-2), 0 0 0 2px var(--line);
+/* Playback highlight: the section being narrated, and the estimated
+   current word. */
+.narrating {
+  border-radius: 2px;
+  background: rgba(182, 93, 37, 0.05);
+}
+
+span.nw.speaking {
+  background: rgba(226, 178, 62, 0.45);
+  border-bottom: 2px solid #d9a531;
+  border-radius: 2px;
 }
 
 .record-panel audio {
@@ -603,6 +611,9 @@ body.recording .audio-done:hover {
 }
 
 .shell-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.65rem 1.1rem;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1045,6 +1056,9 @@ main.comment-target-doc {
 }
 
 .prov-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1101,4 +1115,17 @@ main.comment-target-doc {
 
 .prov-bad {
   color: var(--warning);
+}
+
+.prov-nag {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.sidebar-actions button,
+.block-toolbar button,
+.comment-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
 }

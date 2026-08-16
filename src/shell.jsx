@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
 import {
-  audioKey,
-  audioUnits,
-  audioUrl,
-  deleteRecording,
-  isAudioUnit,
-  listRecorded,
-  saveRecording,
-} from './audio.js';
+  Copy,
+  Download,
+  FileText,
+  Flame,
+  MessageSquareText,
+  Pencil,
+  Pilcrow,
+  StickyNote,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
   blockKey,
   DOC_KEY,
@@ -22,6 +25,7 @@ import {
   wrapQuote,
 } from './comments.js';
 import { beginEdit, splice } from './editor-core.js';
+import { flags } from './flags.js';
 import { analyzeAll } from './heat.js';
 
 const OWN_UI =
@@ -44,21 +48,21 @@ export function Shell({ slug }) {
   const canEdit = import.meta.env.DEV;
   const [mode, setMode] = useState(() => {
     const saved = sessionStorage.getItem('selfdoc-mode');
-    return saved === 'edit' && !canEdit ? null : saved || null;
+    if (saved === 'edit' && !canEdit) return null;
+    if (saved === 'heat' && !flags.heat) return null;
+    if (saved === 'audio') return null; // retired mode
+    return saved || null;
   });
   const [status, setStatus] = useState('');
   const [hover, setHover] = useState(null);
   const [commentEl, setCommentEl] = useState(null);
   const [heatMap, setHeatMap] = useState(null);
   const [grade, setGrade] = useState(() => loadGrade(slug));
-  const [audioStat, setAudioStat] = useState(null);
-  const [audioEl, setAudioEl] = useState(null);
   const [tick, setTick] = useState(0);
 
   const switchMode = (next) => {
     setStatus('');
     setCommentEl(null);
-    setAudioEl(null);
     setHover(null);
     setMode((current) => (current === next ? null : next));
   };
@@ -67,17 +71,10 @@ export function Shell({ slug }) {
     sessionStorage.setItem('selfdoc-mode', mode ?? '');
     document.body.classList.toggle('editing', mode === 'edit');
     document.body.classList.toggle('commenting', mode === 'comment');
-    document.body.classList.toggle('recording', mode === 'audio');
-    if (mode !== 'edit' && mode !== 'comment' && mode !== 'audio') return;
+    if (mode !== 'edit' && mode !== 'comment') return;
     const onClick = (event) => {
       if (event.target.closest(OWN_UI)) return;
       if (event.target.closest('a')) event.preventDefault();
-      if (mode === 'audio') {
-        const note = event.target.closest('aside.note[data-node-start]');
-        const unit = note ?? event.target.closest('[data-edit-start]');
-        if (isAudioUnit(unit)) setAudioEl(unit);
-        return;
-      }
       const el = event.target.closest('[data-edit-start]');
       if (!el) return;
       if (mode === 'edit') {
@@ -95,39 +92,10 @@ export function Shell({ slug }) {
     };
     document.addEventListener('click', onClick);
     return () => {
-      document.body.classList.remove('editing', 'commenting', 'recording');
+      document.body.classList.remove('editing', 'commenting');
       document.removeEventListener('click', onClick);
     };
   }, [mode, slug]);
-
-  // Coverage: which narration units are read, which recordings are orphaned.
-  useEffect(() => {
-    if (!canEdit) return;
-    const unitKeys = audioUnits().map(audioKey);
-    const unitSet = new Set(unitKeys);
-    listRecorded(slug).then((recorded) => {
-      setAudioStat({
-        total: unitSet.size,
-        done: [...unitSet].filter((key) => recorded.includes(key)).length,
-        orphans: recorded.filter((key) => !unitSet.has(key)),
-      });
-    });
-  }, [canEdit, slug, mode, tick]);
-
-  // In record mode, paint every unit by its state: read or still silent.
-  useEffect(() => {
-    if (mode !== 'audio') return;
-    const units = audioUnits();
-    listRecorded(slug).then((recorded) => {
-      const set = new Set(recorded);
-      units.forEach((el) => {
-        el.classList.add(set.has(audioKey(el)) ? 'audio-done' : 'audio-missing');
-      });
-    });
-    return () => {
-      units.forEach((el) => el.classList.remove('audio-done', 'audio-missing'));
-    };
-  }, [mode, slug, tick]);
 
   // The block toolbar (edit) and signal panel (heat) follow the hovered block.
   useEffect(() => {
@@ -232,13 +200,13 @@ export function Shell({ slug }) {
           style={{ top: Math.max(8, rect.top - 34), left: Math.max(8, rect.right - 168) }}
         >
           <button type="button" title="Add paragraph after" onClick={() => act('para')}>
-            + ¶
+            <Pilcrow size={13} />
           </button>
           <button type="button" title="Add margin note after" onClick={() => act('note')}>
-            + note
+            <StickyNote size={13} />
           </button>
           <button type="button" title="Delete block" onClick={() => act('delete')}>
-            ✕
+            <Trash2 size={13} />
           </button>
         </div>
       )}
@@ -267,14 +235,6 @@ export function Shell({ slug }) {
           }}
         />
       )}
-      {audioEl && mode === 'audio' && (
-        <RecordPanel
-          slug={slug}
-          el={audioEl}
-          onClose={() => setAudioEl(null)}
-          onChange={() => setTick((t) => t + 1)}
-        />
-      )}
       {commentEl && mode === 'comment' && (
         <CommentPanel
           slug={slug}
@@ -285,32 +245,13 @@ export function Shell({ slug }) {
       )}
       <div className="editor-shell">
         {status && <span className="editor-status">{status}</span>}
-        {mode === 'audio' && audioStat && (
-          <span className="editor-status">
-            {audioStat.done}/{audioStat.total} sections read
-            {audioStat.orphans.length > 0 && ` · ${audioStat.orphans.length} orphaned`}
-          </span>
-        )}
-        {mode === 'audio' && audioStat?.orphans.length > 0 && (
-          <button
-            type="button"
-            className="shell-btn"
-            title="Delete recordings whose prose was rewritten"
-            onClick={async () => {
-              await Promise.all(audioStat.orphans.map((key) => deleteRecording(slug, key)));
-              setTick((t) => t + 1);
-            }}
-          >
-            purge orphans
-          </button>
-        )}
         {mode === 'comment' && (
           <button
             type="button"
             className="shell-btn"
             onClick={() => setCommentEl({ el: null, quote: null })}
           >
-            🗎 whole doc
+            <FileText size={12} /> whole doc
           </button>
         )}
         {mode === 'comment' && (
@@ -332,145 +273,22 @@ export function Shell({ slug }) {
             </select>
           </label>
         )}
-        {canEdit && (
-          <button type="button" className="shell-btn" onClick={() => switchMode('audio')}>
-            {mode === 'audio'
-              ? 'Done reading'
-              : `🎙 Read aloud${audioStat && audioStat.done < audioStat.total ? ` ${audioStat.done}/${audioStat.total}` : ''}`}
+        {flags.heat && (
+          <button type="button" className="shell-btn" onClick={() => switchMode('heat')}>
+            <Flame size={12} /> {mode === 'heat' ? 'Done with heat' : 'Heat'}
           </button>
         )}
-        <button type="button" className="shell-btn" onClick={() => switchMode('heat')}>
-          {mode === 'heat' ? 'Done with heat' : '🌡 Heat'}
-        </button>
         <button type="button" className="shell-btn" onClick={() => switchMode('comment')}>
-          {mode === 'comment' ? 'Done commenting' : `💬 Comment${grade ? ` · ${grade}` : ''}`}
+          <MessageSquareText size={12} />{' '}
+          {mode === 'comment' ? 'Done commenting' : `Comment${grade ? ` · ${grade}` : ''}`}
         </button>
         {canEdit && (
           <button type="button" className="shell-btn primary" onClick={() => switchMode('edit')}>
-            {mode === 'edit' ? 'Done editing' : '✏️ Edit'}
+            <Pencil size={12} /> {mode === 'edit' ? 'Done editing' : 'Edit'}
           </button>
         )}
       </div>
     </>
-  );
-}
-
-/**
- * You have to hear yourself. Each unit is recorded in one take from the
- * microphone; the preview forces a listen before saving.
- */
-function RecordPanel({ slug, el, onClose, onChange }) {
-  const key = audioKey(el);
-  const [phase, setPhase] = useState('idle'); // idle | recording | preview
-  const [hasSaved, setHasSaved] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [version, setVersion] = useState(0);
-  const [error, setError] = useState('');
-  const recorderRef = useRef(null);
-  const blobRef = useRef(null);
-
-  useEffect(() => {
-    setPhase('idle');
-    setPreviewUrl(null);
-    setError('');
-    blobRef.current = null;
-    listRecorded(slug).then((keys) => setHasSaved(keys.includes(key)));
-    return () => recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
-  }, [slug, key]);
-
-  const start = async () => {
-    setError('');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks = [];
-      recorder.ondataavailable = (event) => chunks.push(event.data);
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        blobRef.current = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        setPreviewUrl(URL.createObjectURL(blobRef.current));
-        setPhase('preview');
-      };
-      recorderRef.current = recorder;
-      recorder.start();
-      setPhase('recording');
-    } catch (err) {
-      setError(`microphone unavailable — ${err.message}`);
-    }
-  };
-
-  const save = async () => {
-    if (await saveRecording(slug, key, blobRef.current)) {
-      setHasSaved(true);
-      setPhase('idle');
-      setPreviewUrl(null);
-      setVersion((v) => v + 1);
-      onChange();
-    } else {
-      setError('save failed — see terminal');
-    }
-  };
-
-  return (
-    <div className="record-panel comment-panel">
-      <div className="comment-head">
-        <span className="comment-excerpt">
-          read aloud: “{el.textContent.trim().slice(0, 90)}…”
-        </span>
-        <button type="button" aria-label="Close" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      {error && <span className="record-error">{error}</span>}
-      {phase === 'idle' && hasSaved && (
-        <>
-          <audio controls src={`${audioUrl(slug, key)}?v=${version}`} />
-          <div className="record-row">
-            <button type="button" className="shell-btn" onClick={start}>
-              ⏺ re-record
-            </button>
-            <button
-              type="button"
-              className="shell-btn"
-              onClick={async () => {
-                await deleteRecording(slug, key);
-                setHasSaved(false);
-                onChange();
-              }}
-            >
-              delete
-            </button>
-          </div>
-        </>
-      )}
-      {phase === 'idle' && !hasSaved && (
-        <button type="button" className="shell-btn primary" onClick={start}>
-          ⏺ record this section
-        </button>
-      )}
-      {phase === 'recording' && (
-        <button
-          type="button"
-          className="shell-btn primary rec-live"
-          onClick={() => recorderRef.current?.stop()}
-        >
-          ⏹ stop
-        </button>
-      )}
-      {phase === 'preview' && (
-        <>
-          <audio controls src={previewUrl} />
-          <div className="record-row">
-            <button type="button" className="shell-btn primary" onClick={save}>
-              keep it
-            </button>
-            <button type="button" className="shell-btn" onClick={start}>
-              ⏺ again
-            </button>
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 
@@ -521,10 +339,10 @@ function CommentSidebar({ slug, tick, onOpen }) {
               navigator.clipboard.writeText(JSON.stringify(exportAnnotations(slug), null, 2))
             }
           >
-            ⧉ json
+            <Copy size={11} /> json
           </button>
           <button type="button" title="Download all comments as JSON" onClick={download}>
-            ⇩
+            <Download size={11} />
           </button>
         </span>
       </div>
@@ -603,7 +421,7 @@ function CommentPanel({ slug, target, onClose, onChange }) {
               : 'on the whole document'}
         </span>
         <button type="button" aria-label="Close" onClick={onClose}>
-          ×
+          <X size={16} />
         </button>
       </div>
       <div className="reaction-row">

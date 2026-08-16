@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ProgressRing, Topbar, useToc } from './chrome.jsx';
 import { components } from './components.jsx';
 import { docMeta, docs } from './docs.js';
-import { Narration } from './player.jsx';
+import { NarrationRail } from './player.jsx';
 import { formatDuration, getProvenance, startTracking } from './provenance.js';
 import { Shell } from './shell.jsx';
 
@@ -17,7 +17,7 @@ function Reader({ slug }) {
         <Doc components={components} />
       </main>
       <ProgressRing toc={toc} />
-      <Narration slug={slug} />
+      <NarrationRail slug={slug} />
       <Shell slug={slug} />
     </>
   );

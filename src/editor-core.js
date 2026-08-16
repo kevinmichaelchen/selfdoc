@@ -50,6 +50,9 @@ export async function splice(doc, start, end, markdown) {
 }
 
 export function beginEdit(slug, el, setStatus) {
+  // Synchronous: playback word-wrapping must be undone before we snapshot
+  // the block's HTML, or the round-trip would serialize the wrapper spans.
+  window.dispatchEvent(new Event('selfdoc:stop-narration'));
   const original = el.innerHTML;
   let cancelled = false;
 

@@ -1,5 +1,6 @@
+import { Check, Copy, Download, Mic, PenLine } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { audioKey, audioUnits, listRecorded } from './audio.js';
+import { AUDIO_CHANGED, audioKey, audioUnits, deleteRecording, listRecorded } from './audio.js';
 import { sources } from './docs.js';
 import { formatDuration, getProvenance } from './provenance.js';
 
@@ -47,6 +48,7 @@ export function Topbar({ slug, minutes }) {
       </span>
       {slug && (
         <span className="topbar-right">
+          {import.meta.env.DEV && <AudioCoverage slug={slug} />}
           {import.meta.env.DEV && <ExportMenu slug={slug} />}
           <CopyMarkdown slug={slug} />
           <ProvenanceStamp slug={slug} />
@@ -54,6 +56,57 @@ export function Topbar({ slug, minutes }) {
         </span>
       )}
     </nav>
+  );
+}
+
+/**
+ * The standing nag: how much of the document you've read aloud. Clicking it
+ * offers to purge stale recordings — but reverting prose revives its audio
+ * (content-hash keys), so stale isn't deleted without asking.
+ */
+function AudioCoverage({ slug }) {
+  const [stat, setStat] = useState(null);
+
+  useEffect(() => {
+    const refresh = () => {
+      const unitSet = new Set(audioUnits().map(audioKey));
+      listRecorded(slug).then((recorded) => {
+        setStat({
+          total: unitSet.size,
+          done: [...unitSet].filter((key) => recorded.includes(key)).length,
+          stale: recorded.filter((key) => !unitSet.has(key)),
+        });
+      });
+    };
+    const settle = setTimeout(refresh, 700);
+    window.addEventListener(AUDIO_CHANGED, refresh);
+    return () => {
+      clearTimeout(settle);
+      window.removeEventListener(AUDIO_CHANGED, refresh);
+    };
+  }, [slug]);
+
+  if (!stat?.total) return null;
+  const complete = stat.done >= stat.total;
+  return (
+    <button
+      type="button"
+      className={`prov-stamp${complete ? '' : ' prov-nag'}`}
+      title={
+        stat.stale.length
+          ? `${stat.done}/${stat.total} sections read · ${stat.stale.length} stale (prose changed). Click to purge stale audio — or revert the prose and it revives.`
+          : `${stat.done}/${stat.total} sections read aloud. Hover a section to record it.`
+      }
+      onClick={async () => {
+        if (!stat.stale.length) return;
+        if (!window.confirm(`Delete ${stat.stale.length} stale recording(s)? Reverting the prose would revive them instead.`)) return;
+        await Promise.all(stat.stale.map((key) => deleteRecording(slug, key)));
+        window.dispatchEvent(new Event(AUDIO_CHANGED));
+      }}
+    >
+      <Mic size={11} /> {stat.done}/{stat.total}
+      {stat.stale.length > 0 && ` · ${stat.stale.length} stale`}
+    </button>
   );
 }
 
@@ -102,7 +155,9 @@ function ExportMenu({ slug }) {
 
   return (
     <details ref={menuRef} className="export-menu">
-      <summary className="prov-stamp">{busy ? 'building…' : '⇩ export'}</summary>
+      <summary className="prov-stamp">
+        <Download size={11} /> {busy ? 'building…' : 'export'}
+      </summary>
       <div className="export-options">
         <button type="button" onClick={() => run(false)}>
           HTML <em>default</em>
@@ -129,7 +184,7 @@ function CopyMarkdown({ slug }) {
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {copied ? '✓ copied' : '⧉ copy md'}
+      {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'copied' : 'copy md'}
     </button>
   );
 }
@@ -159,7 +214,7 @@ function ProvenanceStamp({ slug }) {
         title="Authoring provenance"
         onClick={() => setOpen((v) => !v)}
       >
-        ✍ {formatDuration(stats.readingMs)}
+        <PenLine size={11} /> {formatDuration(stats.readingMs)}
       </button>
       {open && (
         <div className="prov-panel">

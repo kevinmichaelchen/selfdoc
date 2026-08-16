@@ -74,18 +74,21 @@ each annotation paired with the text it targets, ready to feed to an agent.
 All of it lives in your browser's localStorage, so it works even in the
 exported single-file HTML.
 
-**🌡 Heat** is a third lens: it flags blocks that read hot — too long, run-on
+**🌡 Heat** is another lens: it flags blocks that read hot — too long, run-on
 sentences, dense vocabulary, em-dash pileups, filler words. Hover a
 highlighted block to see why. Like the TOC, it's derived on demand and stored
-nowhere.
+nowhere. It's currently parked behind a feature flag while it gets rethought.
 
-**🎙 Read aloud** is the harshest lens: you record yourself reading every
-paragraph, list, quote, and margin note (code and headings are exempt). There
-is no better way to discover a sentence doesn't work than saying it with your
-own mouth. Recordings anchor to the section's content — rewrite the prose and
-its audio is orphaned until you read the new version. Readers get a ▶ beside
-every narrated section, and the narrated export refuses to build until the
-whole document has been read.
+Narration is the harshest lens, and it isn't a mode — it's ambient. Hover any
+section that hasn't been read aloud and a small mic appears in the margin;
+there is no better way to discover a sentence doesn't work than saying it
+with your own mouth. Once recorded, the section carries a subtle ▶ that plays
+from there through the rest of the narrated document, with the current word
+carrying a soft yellow underline as the audio plays (an estimate — the timing
+spreads the recording across the words by length). Recordings anchor to the
+section's content: rewrite the prose and its audio goes stale until you read
+the new version — but revert the prose and the old recording comes back. The
+narrated export refuses to build until the whole document has been read.
 
 The ✍ stamp in the topbar is the document's watermark: sessions and distinct
 days, active time (idle tabs accrue nothing — there has to be real input),
