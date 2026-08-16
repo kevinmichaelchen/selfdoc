@@ -74,11 +74,26 @@ export function Shell({ slug }) {
     setMode((current) => (current === next ? null : next));
   };
 
+  // j/k hop between headings, vim-style.
+  const jumpSection = (dir) => {
+    const els = [...document.querySelectorAll('main h2, main h3')];
+    const tops = els.map((el) => el.getBoundingClientRect().top + window.scrollY);
+    const here = window.scrollY + 100;
+    // Backward skips the heading we're parked on (scroll-margin leaves it
+    // ~10px above the reference line, so the epsilon must clear that).
+    const index =
+      dir > 0 ? tops.findIndex((t) => t > here + 8) : tops.filter((t) => t < here - 40).length - 1;
+    if (index >= 0 && els[index]) els[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else if (dir < 0) window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Single-letter hotkeys; Escape unwinds the topmost thing that's open.
   // Escape inside a contentEditable block belongs to the editor (save+blur).
   useEffect(
     () =>
       onHotkeys({
+        j: () => jumpSection(1),
+        k: () => jumpSection(-1),
         c: () => switchMode('comment'),
         p: () => window.dispatchEvent(new Event(TOGGLE_LISTEN)),
         '?': () => setHelpOpen((open) => !open),
@@ -287,6 +302,10 @@ export function Shell({ slug }) {
               <kbd>p</kbd>
             </dt>
             <dd>listen from the top / pause</dd>
+            <dt>
+              <kbd>j</kbd> <kbd>k</kbd>
+            </dt>
+            <dd>next / previous section</dd>
             <dt>
               <kbd>c</kbd>
             </dt>

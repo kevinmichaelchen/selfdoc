@@ -42,6 +42,8 @@ export function NarrationRail({ slug }) {
   const [playing, setPlaying] = useState(null);
   const [recordEl, setRecordEl] = useState(null);
   const [alignMsg, setAlignMsg] = useState('');
+  const [rate, setRate] = useState(() => Number(localStorage.getItem('selfdoc-rate')) || 1);
+  const rateRef = useRef(rate);
   // Playback runs on Web Audio, not <audio>: MediaRecorder webm carries no
   // duration header, so element seeking (trim, skips) stutters and its
   // duration reads Infinity. Decoding gives exact lengths and lets trim and
@@ -231,16 +233,21 @@ export function NarrationRail({ slug }) {
       setPlaying(unit.key);
       // Listening is hands-free: the page follows the voice.
       unit.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Offset/duration are buffer-time; playbackRate compresses wall-time,
+      // so a segment occupies (length ÷ rate) seconds of the schedule. A rate
+      // change mid-play applies from the next section.
+      const r = rateRef.current;
       let when = ctx.currentTime + 0.08;
       const timeline = [];
       segments.forEach(([s, e]) => {
         const src = ctx.createBufferSource();
         src.buffer = buffer;
+        src.playbackRate.value = r;
         src.connect(ctx.destination);
         src.start(when, s, e - s);
         sourcesRef.current.push(src);
-        timeline.push({ at: when, from: s, len: e - s });
-        when += e - s;
+        timeline.push({ at: when, from: s, wall: (e - s) / r });
+        when += (e - s) / r;
       });
       const endAt = when;
 
@@ -253,8 +260,8 @@ export function NarrationRail({ slug }) {
           playSection(i + 1);
           return;
         }
-        const seg = timeline.find((t) => now >= t.at && now < t.at + t.len);
-        if (seg) updateSweep(seg.from + (now - seg.at), meta, t0, t1);
+        const seg = timeline.find((t) => now >= t.at && now < t.at + t.wall);
+        if (seg) updateSweep(seg.from + (now - seg.at) * r, meta, t0, t1);
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
@@ -285,16 +292,32 @@ export function NarrationRail({ slug }) {
   return (
     <>
       {narrated.length > 0 && (
-        <button
-          type="button"
-          className={`listen-pill${playing ? ' playing' : ''}`}
-          onClick={() => (playing ? stopPlayback() : playFrom(narrated[0].key))}
-        >
-          {playing ? <Pause size={13} /> : <Headphones size={13} />}
-          {playing
-            ? `${narrated.findIndex((u) => u.key === playing) + 1}/${narrated.length}`
-            : `Listen · ${Math.max(1, Math.round(listenSeconds / 60))} min`}
-        </button>
+        <>
+          <button
+            type="button"
+            className={`listen-pill${playing ? ' playing' : ''}`}
+            onClick={() => (playing ? stopPlayback() : playFrom(narrated[0].key))}
+          >
+            {playing ? <Pause size={13} /> : <Headphones size={13} />}
+            {playing
+              ? `${narrated.findIndex((u) => u.key === playing) + 1}/${narrated.length}`
+              : `Listen · ${Math.max(1, Math.round(listenSeconds / rate / 60))} min`}
+          </button>
+          <button
+            type="button"
+            className="listen-rate"
+            title="Playback speed (applies from the next section while playing)"
+            onClick={() => {
+              const RATES = [1, 1.25, 1.5, 2];
+              const next = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+              setRate(next);
+              rateRef.current = next;
+              localStorage.setItem('selfdoc-rate', String(next));
+            }}
+          >
+            {rate}×
+          </button>
+        </>
       )}
       <div className="narration-layer">
         {units.map((unit) => {

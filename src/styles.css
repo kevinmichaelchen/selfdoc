@@ -1372,3 +1372,27 @@ main.comment-target-doc {
   font: 600 0.72rem/1.3 var(--sans);
   text-align: center;
 }
+
+.listen-rate {
+  position: fixed;
+  left: 5rem;
+  bottom: 4.6rem;
+  z-index: 50;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font: 600 0.72rem/1 var(--sans);
+  cursor: pointer;
+}
+
+.listen-rate:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+main h2,
+main h3 {
+  scroll-margin-top: 90px;
+}

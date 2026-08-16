@@ -10,6 +10,27 @@ function Reader({ slug }) {
   const Doc = docs[slug];
   const { toc, minutes } = useToc();
   useEffect(() => startTracking(slug), [slug]);
+
+  // Pick up where you left off. Restore waits a beat for fonts to settle the
+  // layout; near-top positions aren't worth restoring.
+  useEffect(() => {
+    const key = `selfdoc:${slug}:pos`;
+    const saved = Number(localStorage.getItem(key));
+    const settle = setTimeout(() => {
+      if (saved > 400 && window.scrollY < 50) window.scrollTo({ top: saved });
+    }, 350);
+    let timer;
+    const onScroll = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => localStorage.setItem(key, String(Math.round(window.scrollY))), 300);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      clearTimeout(settle);
+      clearTimeout(timer);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [slug]);
   return (
     <>
       <Topbar slug={slug} minutes={minutes} />
