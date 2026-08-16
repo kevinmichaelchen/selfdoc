@@ -1,4 +1,4 @@
-import { AudioLines, Square, X } from 'lucide-react';
+import { AudioLines, Mic, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { AUDIO_CHANGED, audioKey, audioUnits, listAudio } from './audio.js';
 import {
@@ -9,8 +9,14 @@ import {
   TTS_VARIANTS,
   TTS_VOICES,
 } from './tts.js';
+import { buildReference, realTakes, referenceInfo } from './voice-ref.js';
 
 const PROVIDERS = [
+  {
+    id: 'pocket',
+    label: 'Pocket TTS — your voice, cloned locally',
+    facts: null, // rendered inline with the reference flow
+  },
   {
     id: 'kokoro',
     label: 'Kokoro-82M — local, free',
@@ -55,6 +61,8 @@ export function VoicePanel({ slug, onClose }) {
   const [apiKey, setApiKey] = useState(() => stored(`selfdoc-tts-key-${stored('selfdoc-tts-provider', 'kokoro')}`));
   const [cloudVoice, setCloudVoice] = useState(() => stored('selfdoc-tts-cloud-voice'));
   const [missing, setMissing] = useState(0);
+  const [voiceRef, setVoiceRef] = useState(null);
+  const [takeCount, setTakeCount] = useState(0);
   const [status, setStatus] = useState('');
   const [pct, setPct] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -65,13 +73,24 @@ export function VoicePanel({ slug, onClose }) {
       setProbe(p);
       setDtype(p.recommended.dtype);
     });
-    // A key in the server environment makes its provider ready to use with
-    // zero setup — and Fish is the default pick when the author never chose.
-    serverKeys().then((keys) => {
+    // A key in the server environment makes its provider ready with zero
+    // setup. When the author never chose: their own cloned voice beats
+    // everything, then Fish (the default cloud pick), then Kokoro.
+    Promise.all([serverKeys(), referenceInfo()]).then(([keys, ref]) => {
       setEnvKeys(keys);
-      if (!chosenRef.current && keys.fish) setProvider('fish');
+      setVoiceRef(ref);
+      if (chosenRef.current) return;
+      if (keys.pocket && ref.exists) setProvider('pocket');
+      else if (keys.fish) setProvider('fish');
     });
   }, []);
+
+  useEffect(() => {
+    const refresh = () => realTakes(slug).then((takes) => setTakeCount(takes.length));
+    refresh();
+    window.addEventListener(AUDIO_CHANGED, refresh);
+    return () => window.removeEventListener(AUDIO_CHANGED, refresh);
+  }, [slug]);
 
   useEffect(() => {
     localStorage.setItem('selfdoc-tts-provider', provider);
@@ -91,7 +110,21 @@ export function VoicePanel({ slug, onClose }) {
   }, [slug]);
 
   const meta = PROVIDERS.find((p) => p.id === provider);
-  const needsKey = provider !== 'kokoro';
+  const needsKey = provider === 'elevenlabs' || provider === 'fish';
+  const pocketReady = Boolean(envKeys.pocket && voiceRef?.exists);
+
+  const rebuild = async () => {
+    setBusy(true);
+    try {
+      const built = await buildReference(slug, setStatus);
+      setVoiceRef(await referenceInfo());
+      setStatus(`voice reference built: ${Math.round(built.seconds)}s from ${built.takes} take(s) ✓`);
+    } catch (err) {
+      setStatus(`reference failed — ${String(err.message ?? err).slice(0, 110)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const render = async () => {
     setBusy(true);
@@ -141,6 +174,68 @@ export function VoicePanel({ slug, onClose }) {
           ))}
         </select>
       </label>
+
+      {provider === 'pocket' && (
+        <>
+          <dl className="voice-facts">
+            <dt>model</dt>
+            <dd>
+              <a href="https://github.com/kyutai-labs/pocket-tts" target="_blank" rel="noreferrer">
+                Kyutai Pocket TTS
+              </a>{' '}
+              · 100M params
+            </dd>
+            <dt>runs</dt>
+            <dd>on this machine — your voice and text never leave it</dd>
+            <dt>cost</dt>
+            <dd>free · MIT code, gated weights (one-time terms on Hugging Face)</dd>
+          </dl>
+          {!envKeys.pocket && (
+            <p className="voice-probe">
+              needs{' '}
+              <a href="https://docs.astral.sh/uv/" target="_blank" rel="noreferrer">
+                uv
+              </a>{' '}
+              on your PATH — the worker runs via “uv run --with pocket-tts”
+            </p>
+          )}
+          {voiceRef?.exists ? (
+            <p className="voice-probe">
+              voice reference: {voiceRef.seconds}s from {voiceRef.takes.length} of your real
+              takes ✓
+            </p>
+          ) : (
+            <p className="voice-probe">
+              no voice reference yet — it gets built from your real recordings ({takeCount}{' '}
+              usable in this doc)
+            </p>
+          )}
+          <button
+            type="button"
+            className="shell-btn"
+            disabled={busy || !takeCount}
+            onClick={rebuild}
+          >
+            <Mic size={12} />{' '}
+            {voiceRef?.exists ? 'rebuild reference from this doc' : 'build voice reference'}
+          </button>
+          <details className="voice-adv">
+            <summary>first-time setup</summary>
+            <p className="rec-hint">
+              Cloning weights are gated: accept the terms at{' '}
+              <a
+                href="https://huggingface.co/kyutai/pocket-tts"
+                target="_blank"
+                rel="noreferrer"
+              >
+                huggingface.co/kyutai/pocket-tts
+              </a>
+              , then run “uvx hf auth login” once. The first render downloads the model and
+              takes a few minutes; after that it stays warm.
+            </p>
+          </details>
+        </>
+      )}
 
       {provider === 'kokoro' && (
         <>
@@ -265,7 +360,12 @@ export function VoicePanel({ slug, onClose }) {
         <button
           type="button"
           className="shell-btn primary"
-          disabled={!probe || !missing || (needsKey && !apiKey.trim() && !envKeys[provider])}
+          disabled={
+            !probe ||
+            !missing ||
+            (needsKey && !apiKey.trim() && !envKeys[provider]) ||
+            (provider === 'pocket' && !pocketReady)
+          }
           onClick={render}
         >
           <AudioLines size={12} />{' '}

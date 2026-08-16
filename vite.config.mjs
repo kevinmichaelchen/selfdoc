@@ -1,6 +1,8 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline';
 import mdx from '@mdx-js/rollup';
 import react from '@vitejs/plugin-react';
 import remarkGfm from 'remark-gfm';
@@ -118,6 +120,100 @@ function allAudioIndex() {
   } catch {
     return {};
   }
+}
+
+// --- voice cloning (Pocket TTS) -----------------------------------------
+
+// The author's voice reference: ~20s assembled client-side from their real
+// takes (research: 6–10s captures the core of a voice, gains plateau ~20s).
+// Pocket TTS clones from it locally via a long-lived Python worker.
+const VOICE_DIR = path.join(CONTENT, 'voice');
+const VOICE_REF = path.join(VOICE_DIR, 'reference.wav');
+const VOICE_META = path.join(VOICE_DIR, 'reference.json');
+
+let uvOk = null;
+function pocketRuntimeOk() {
+  uvOk ??= spawnSync('uv', ['--version']).status === 0;
+  return uvOk;
+}
+
+let pocket = null; // { proc, ready, pending }
+let pocketSeq = 0;
+let pocketQueue = Promise.resolve();
+
+function startPocketWorker() {
+  if (pocket) return pocket.ready;
+  const proc = spawn(
+    'uv',
+    ['run', '--with', 'pocket-tts', 'python', path.join(ROOT, 'scripts/pocket_worker.py'), VOICE_REF],
+    { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] },
+  );
+  const state = { proc, pending: [] };
+  state.ready = new Promise((resolve, reject) => {
+    proc.on('error', (err) => {
+      pocket = null;
+      reject(err);
+    });
+    proc.on('exit', (code) => {
+      pocket = null;
+      reject(new Error(`pocket worker exited (${code})`));
+      state.pending.splice(0).forEach((p) => p.reject(new Error('pocket worker exited')));
+    });
+    readline.createInterface({ input: proc.stdout }).on('line', (line) => {
+      let msg;
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (msg.ready) return resolve();
+      if (msg.fatal) {
+        pocket = null;
+        return reject(new Error(msg.fatal));
+      }
+      state.pending.shift()?.[msg.error ? 'reject' : 'resolve'](
+        msg.error ? new Error(msg.error) : msg,
+      );
+    });
+  });
+  pocket = state;
+  return state.ready;
+}
+
+function stopPocketWorker() {
+  pocket?.proc.kill();
+  pocket = null;
+}
+
+/** One synthesis request; serialized, model+voice state stay hot in memory. */
+function pocketSynthesize(text) {
+  const job = pocketQueue.then(async () => {
+    // First start downloads deps + weights — allow it plenty of time.
+    await withTimeout(startPocketWorker(), 900_000, 'pocket worker start');
+    const out = path.join(os.tmpdir(), `selfdoc-pocket-${process.pid}-${pocketSeq++}.wav`);
+    const reply = withTimeout(
+      new Promise((resolve, reject) => pocket.pending.push({ resolve, reject })),
+      300_000,
+      'pocket synthesis',
+    );
+    pocket.proc.stdin.write(`${JSON.stringify({ text, out })}\n`);
+    await reply;
+    const wav = fs.readFileSync(out);
+    fs.rmSync(out, { force: true });
+    return wav;
+  });
+  pocketQueue = job.catch(stopPocketWorker); // a wedged worker restarts fresh
+  return job;
+}
+
+function withTimeout(promise, ms, what) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} timed out`)), ms);
+    }),
+  ]);
 }
 
 // --- per-document export ------------------------------------------------
@@ -401,6 +497,49 @@ function selfServe() {
         res.end();
       });
 
+      // The author's voice reference for cloning: assembled client-side from
+      // real takes, stored beside the content it came from.
+      server.middlewares.use('/__voice', (req, res) => {
+        if (req.method === 'GET') {
+          res.setHeader('content-type', 'application/json');
+          try {
+            return res.end(fs.readFileSync(VOICE_META, 'utf8'));
+          } catch {
+            return res.end(JSON.stringify({ exists: false }));
+          }
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end();
+        }
+        readBody(req, (body) => {
+          const params = new URLSearchParams(req.url.split('?')[1] ?? '');
+          const seconds = Number(params.get('seconds'));
+          const takes = (params.get('takes') ?? '').split(',').filter((k) => AUDIO_KEY.test(k));
+          if (!body.length || !Number.isFinite(seconds) || !takes.length) {
+            res.statusCode = 400;
+            return res.end('bad reference');
+          }
+          fs.mkdirSync(VOICE_DIR, { recursive: true });
+          fs.writeFileSync(VOICE_REF, body);
+          fs.writeFileSync(
+            VOICE_META,
+            `${JSON.stringify(
+              {
+                exists: true,
+                seconds: Math.round(seconds * 10) / 10,
+                takes,
+                builtAt: new Date().toISOString(),
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          stopPocketWorker(); // next synthesis re-derives the voice state
+          res.end('ok');
+        });
+      });
+
       // Cloud TTS proxy. Keys resolve server-side first — from the process
       // environment (works with plain `export`, secretspec, varlock, any
       // secret manager that injects env vars) so the browser never holds a
@@ -411,11 +550,12 @@ function selfServe() {
         if (req.method === 'GET') {
           res.setHeader('content-type', 'application/json');
           return res.end(
-            JSON.stringify(
-              Object.fromEntries(
+            JSON.stringify({
+              ...Object.fromEntries(
                 Object.entries(TTS_ENV_KEYS).map(([p, envVar]) => [p, Boolean(process.env[envVar])]),
               ),
-            ),
+              pocket: pocketRuntimeOk(),
+            }),
           );
         }
         if (req.method !== 'POST') {
@@ -425,11 +565,30 @@ function selfServe() {
         readBody(req, async (body) => {
           try {
             const { provider, key: clientKey, voice, text } = JSON.parse(body.toString('utf8'));
+            if (typeof text !== 'string' || !text || text.length > 5000) {
+              res.statusCode = 400;
+              return res.end('bad request');
+            }
+            // Pocket runs locally — no key, no upstream, audio never leaves.
+            if (provider === 'pocket') {
+              if (!fs.existsSync(VOICE_REF)) {
+                res.statusCode = 400;
+                return res.end('no voice reference — build one in the Voice panel first');
+              }
+              try {
+                const wav = await pocketSynthesize(text);
+                res.setHeader('content-type', 'audio/wav');
+                return res.end(wav);
+              } catch (err) {
+                res.statusCode = 502;
+                return res.end(String(err.message ?? err));
+              }
+            }
             const key =
               (typeof clientKey === 'string' && clientKey) ||
               process.env[TTS_ENV_KEYS[provider] ?? ''] ||
               '';
-            if (!key || typeof text !== 'string' || text.length > 5000) {
+            if (!key) {
               res.statusCode = 400;
               return res.end('bad request');
             }

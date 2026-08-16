@@ -2,14 +2,18 @@
 
 Logged, not built.
 
-## Voice-cloned synthetic fill (endorsed — next up)
+## Voice-cloned synthetic fill — SHIPPED
 
-Synthetic sections currently speak in a stock voice. Kyutai Pocket TTS
-(100M, weights CC-BY-4.0, 6× realtime on two M4 cores) clones a voice from a
-wav — and every selfdoc author with any recorded section already has
-reference audio on disk. Clone from the author's real takes so synthetic
-fill approximates their voice, still marked synthetic. Browser story is
-emerging; may need a small native/CLI step in the dev middleware.
+Shipped (2026-08-16): Pocket TTS is a first-class Voice-panel engine. The
+reference (~20s of the author's cleanest real speech — trimmed, pause-skips
+cut, 24 kHz mono) is assembled client-side from existing takes; a warm
+Python worker (`scripts/pocket_worker.py` via `uv run --with pocket-tts`,
+JSON lines over stdio) clones and synthesizes locally; results flow through
+the normal take pipeline, marked `Pocket TTS / cloned from your takes`.
+Cloning weights are HF-gated (accept terms + `uvx hf auth login`, one
+time). Research and recording guidance in docs/voice-cloning.md. Remaining:
+a purpose-made "calibration read" flow (Rainbow Passage) if assembled takes
+prove weaker than a single deliberate reference.
 
 ## Faster-than-realtime encode via WebCodecs
 

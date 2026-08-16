@@ -203,9 +203,20 @@ async function cloudSynthesize(provider, apiKey, cloudVoice, text) {
 
 export const PROVIDER_LABELS = {
   kokoro: 'Kokoro-82M',
+  pocket: 'Pocket TTS',
   elevenlabs: 'ElevenLabs',
   fish: 'Fish Audio',
 };
+
+async function decodeToPcm(blob) {
+  const ctx = new AudioContext();
+  try {
+    const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+    return { pcm: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
+  } finally {
+    ctx.close();
+  }
+}
 
 export async function synthesizeMissing(slug, options, onProgress, cancel) {
   if (import.meta.env.DEV) {
@@ -235,6 +246,18 @@ export async function synthesizeMissing(slug, options, onProgress, cancel) {
           blob = await encodeOpus(pcm, sampleRate, (pct) => {
             onProgress(`${i + 1}/${missing.length} · encoding “${label}…”`, pct);
           }, cancel);
+        } else if (provider === 'pocket') {
+          // The local worker clones from the author's reference and returns
+          // wav; re-encode to the same opus as every other take. The first
+          // request may take minutes (model download + voice state).
+          onProgress(`${i + 1}/${missing.length} · reading “${label}…” in your voice`);
+          const wav = await cloudSynthesize('pocket', '', '', text);
+          if (cancel?.current) throw new Cancelled();
+          const { pcm, sampleRate } = await decodeToPcm(wav);
+          onProgress(`${i + 1}/${missing.length} · encoding “${label}…”`, 0);
+          blob = await encodeOpus(pcm, sampleRate, (pct) => {
+            onProgress(`${i + 1}/${missing.length} · encoding “${label}…”`, pct);
+          }, cancel);
         } else {
           onProgress(`${i + 1}/${missing.length} · requesting “${label}…”`);
           blob = await cloudSynthesize(provider, apiKey, cloudVoice, text);
@@ -252,7 +275,10 @@ export async function synthesizeMissing(slug, options, onProgress, cancel) {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            tts: { model: PROVIDER_LABELS[provider] ?? provider, voice: voice ?? cloudVoice ?? '' },
+            tts: {
+              model: PROVIDER_LABELS[provider] ?? provider,
+              voice: provider === 'pocket' ? 'cloned from your takes' : (voice ?? cloudVoice ?? ''),
+            },
           }),
         });
         rendered++;
